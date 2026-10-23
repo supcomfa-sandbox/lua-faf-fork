@@ -13,6 +13,11 @@
 #include "ltm.h"
 #include "lzio.h"
 
+/* SCFA dialect port (types): metatables for the basic types (global_State member) */
+#define SCFA_IN_LSTATE_H
+#include "scfa_types_impl.h"
+#undef SCFA_IN_LSTATE_H
+
 
 /*
 ** macros for thread synchronization inside Lua core machine:
@@ -121,7 +126,7 @@ typedef struct global_State {
   TObject _defaultmeta;
   struct lua_State *mainthread;
   Node dummynode[1];  /* common node array for all empty tables */
-  struct Table *mt[NUM_TAGS];  /* metatables for basic types */
+  SCFA_GLOBAL_FIELDS  /* SCFA: metatables for basic types */
   TString *tmname[TM_N];  /* array with tag-method names */
 } global_State;
 

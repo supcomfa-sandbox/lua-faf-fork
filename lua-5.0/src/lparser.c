@@ -39,7 +39,7 @@
 typedef struct BlockCnt {
   struct BlockCnt *previous;  /* chain */
   int breaklist;  /* list of jumps out of this loop */
-	int contlist;  /* list of jumps to the loop condition */
+  SCFA_BLOCK_FIELDS  /* SCFA: continue jump list */
   int nactvar;  /* # active local variables outside the breakable structure */
   int upval;  /* true if some variable in the block is an upvalue */
   int isbreakable;  /* true if `block' is a loop */
@@ -280,9 +280,14 @@ static void code_params (LexState *ls, int nparams, int dots) {
 }
 
 
+/* SCFA dialect port (keywords): parser hooks (continue, bit operators) */
+#define SCFA_IN_LPARSER
+#include "scfa_keywords_impl.h"
+
+
 static void enterblock (FuncState *fs, BlockCnt *bl, int isbreakable) {
   bl->breaklist = NO_JUMP;
-	bl->contlist = NO_JUMP;
+  scfa_block_init(bl);
   bl->isbreakable = isbreakable;
   bl->nactvar = fs->nactvar;
   bl->upval = 0;
@@ -775,11 +780,7 @@ static BinOpr getbinopr (int op) {
     case TK_GE: return OPR_GE;
     case TK_AND: return OPR_AND;
     case TK_OR: return OPR_OR;
-		case '&': return OPR_BAND;
-		case '|': return OPR_BOR;
-    case TK_BSHL: return OPR_BSHL;
-    case TK_BSHR: return OPR_BSHR;
-    default: return OPR_NOBINOPR;
+    default: return scfa_getbinopr(op);  /* SCFA: & | << >> */
   }
 }
 
@@ -789,11 +790,11 @@ static const struct {
   lu_byte left;  /* left priority for each binary operator */
   lu_byte right; /* right priority */
 } priority[] = {  /* ORDER OPR */
-   {6, 6}, {6, 6},              		/* arithmetic (add/sub) */
-	 {7, 7}, {7, 7},             			/* arithmetic (mul/div) */
-	 {8, 8}, {8, 8}, {8, 8}, {8, 8},  /* bitwise (and/or/shl/shr) */
-   {10, 9}, 												/* xor    (right associative!!!!) */
-	 {5, 4},                					/* concat (right associative) */
+   {6, 6}, {6, 6},                  /* arithmetic (add/sub) */
+   {7, 7}, {7, 7},                  /* arithmetic (mul/div) */
+   SCFA_PRIORITY_BITS               /* SCFA: bitwise (and/or/shl/shr) bind tighter than mul/div */
+   {SCFA_XOR_LEFT, SCFA_XOR_RIGHT}, /* xor    (right associative!!!!) */
+   {5, 4},                          /* concat (right associative) */
    {3, 3}, {3, 3},                  /* equality */
    {3, 3}, {3, 3}, {3, 3}, {3, 3},  /* order */
    {2, 2}, {1, 1}                   /* logical (and/or) */
@@ -998,7 +999,7 @@ static void whilestat (LexState *ls, int line) {
   blockinit = luaK_getlabel(fs);
   block(ls);
   luaK_patchtohere(fs, whileinit);  /* initial jump jumps to here */
-  luaK_patchtohere(fs, bl.contlist);
+  scfa_loop_continue_here(fs, &bl);  /* SCFA: `continue' re-tests the condition */
   /* move `exp' back to code */
   if (v.t != NO_JUMP) v.t += fs->pc - expinit;
   if (v.f != NO_JUMP) v.f += fs->pc - expinit;
@@ -1021,7 +1022,7 @@ static void repeatstat (LexState *ls, int line) {
   next(ls);
   block(ls);
   check_match(ls, TK_UNTIL, TK_REPEAT, line);
-  luaK_patchtohere(fs, bl.contlist);
+  scfa_repeat_cond_begin(fs, &bl);  /* SCFA: `continue' goes to the condition */
   cond(ls, &v);
   luaK_patchlist(fs, v.f, repeat_init);
   leaveblock(fs);
@@ -1048,7 +1049,7 @@ static void forbody (LexState *ls, int base, int line, int nvars, int isnum) {
   prep = luaK_getlabel(fs);
   block(ls);
   luaK_patchtohere(fs, prep-1);
-	luaK_patchtohere(fs, bl.contlist);
+  scfa_loop_continue_here(fs, &bl);  /* SCFA: `continue' goes to the loop step */
   endfor = (isnum) ? luaK_codeAsBx(fs, OP_FORLOOP, base, NO_JUMP) :
                      luaK_codeABC(fs, OP_TFORLOOP, base, 0, nvars - 3);
   luaK_fixline(fs, line);  /* pretend that `OP_FOR' starts the loop */
@@ -1277,24 +1278,6 @@ static void breakstat (LexState *ls) {
 }
 
 
-static void continuestat (LexState *ls) {
-  /* stat -> CONTINUE [NAME] */
-  FuncState *fs = ls->fs;
-  BlockCnt *bl = fs->bl;
-  int upval = 0;
-  next(ls);  /* skip BREAK */
-  while (bl && !bl->isbreakable) {
-    upval |= bl->upval;
-    bl = bl->previous;
-  }
-  if (!bl)
-    luaX_syntaxerror(ls, "no loop to continue");
-  if (upval)
-    luaK_codeABC(fs, OP_CLOSE, bl->nactvar, 0, 0);
-  luaK_concat(fs, &bl->contlist, luaK_jump(fs));
-}
-
-
 static int statement (LexState *ls) {
   int line = ls->linenumber;  /* may be needed for error messages */
   switch (ls->t.token) {
@@ -1340,11 +1323,8 @@ static int statement (LexState *ls) {
       breakstat(ls);
       return 1;  /* must be last statement */
     }
-    case TK_CONTINUE: {  /* stat -> continuestat */
-      continuestat(ls);
-      return 1;  /* must be last statement */
-    }
     default: {
+      if (scfa_statement(ls)) return 1;  /* SCFA: continue (must be last statement) */
       exprstat(ls);
       return 0;  /* to avoid warnings */
     }

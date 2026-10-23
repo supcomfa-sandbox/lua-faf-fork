@@ -743,10 +743,9 @@ static int str_format (lua_State *L) {
 }
 
 
-static int str_lualex (lua_State *L) {
-  // TODO: Implement
-  return 1;
-}
+/* SCFA dialect port (types): string.lualex stub, metatable for strings */
+#define SCFA_IN_LSTRLIB
+#include "scfa_types_impl.h"
 
 
 static const luaL_reg strlib[] = {
@@ -762,20 +761,9 @@ static const luaL_reg strlib[] = {
   {"find", str_find},
   {"gfind", gfind},
   {"gsub", str_gsub},
-  {"lualex", str_lualex},
+  SCFA_STRLIB_ENTRIES
   {NULL, NULL}
 };
-
-
-static void createmetatable (lua_State *L) {
-  lua_newtable(L);  /* create metatable for strings */
-  lua_pushliteral(L, "__index");  /* dummy string, but also the metamethod */
-  lua_pushvalue(L, -2);
-  lua_setmetatable(L, -2);  /* set string metatable */
-  lua_pushvalue(L, -3);  /* string library... */
-  lua_settable(L, -3);  /* ...is the __index metamethod */
-  lua_pop(L, 1);  /* pop metatable */
-}
 
 
 /*
@@ -783,6 +771,6 @@ static void createmetatable (lua_State *L) {
 */
 LUALIB_API int luaopen_string (lua_State *L) {
   luaL_openlib(L, LUA_STRLIBNAME, strlib, 0);
-  createmetatable(L);
+  scfa_string_metatable(L);  /* SCFA: strings have methods */
   return 1;
 }

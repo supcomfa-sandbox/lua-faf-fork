@@ -535,7 +535,7 @@ LUA_API int lua_getmetatable (lua_State *L, int objindex) {
         mt = uvalue(obj)->uv.metatable;
         break;
       default:
-        mt = G(L)->mt[ttype(obj)];
+        mt = SCFA_TYPE_MT(L, ttype(obj));  /* SCFA: metatables for basic types */
         break;
     }
   }
@@ -619,7 +619,7 @@ LUA_API int lua_setmetatable (lua_State *L, int objindex) {
       break;
     }
     default: {
-      G(L)->mt[ttype(obj)] = hvalue(mt);
+      SCFA_TYPE_MT(L, ttype(obj)) = hvalue(mt);  /* SCFA: metatables for basic types */
       break;
     }
   }

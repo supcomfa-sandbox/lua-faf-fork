@@ -66,7 +66,7 @@ const TObject *luaT_gettmbyobj (lua_State *L, const TObject *o, TMS event) {
       mt = uvalue(o)->uv.metatable;
       break;
     default:
-      mt = G(L)->mt[ttype(o)];
+      mt = SCFA_TYPE_MT(L, ttype(o));  /* SCFA */
   }
   return (mt ? luaH_getstr(mt, G(L)->tmname[event]) : &luaO_nilobject);
 }

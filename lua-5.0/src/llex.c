@@ -28,12 +28,12 @@
 
 /* ORDER RESERVED */
 static const char *const token2string [] = {
-    "and", "break", "continue", "do", "else", "elseif",
+    "and", "break", SCFA_STR_RESERVED "do", "else", "elseif",
     "end", "false", "for", "function", "if",
     "in", "local", "nil", "not", "or", "repeat",
     "return", "then", "true", "until", "while", "*name",
     "..", "...", "==", ">=", "<=", "~=",
-    "*number", "*string", "<<", ">>", "<eof>"
+    "*number", "*string", SCFA_STR_EXTRA "<eof>"
 };
 
 
@@ -170,25 +170,9 @@ static size_t readname (LexState *LS) {
 }
 
 
-/* Hex LUA_NUMBER */
-static void read_xnumeral (LexState *LS, SemInfo *seminfo, size_t l) {
-  while (isxdigit(LS->current)) {
-    checkbuffer(LS, l);
-    save_and_next(LS, l);
-  }
-  if (LS->current == 'p' || LS->current == 'P') {
-    save_and_next(LS, l);  /* read `P' */
-    if (LS->current == '+' || LS->current == '-')
-      save_and_next(LS, l);  /* optional exponent sign */
-    while (isxdigit(LS->current)) {
-      checkbuffer(LS, l);
-      save_and_next(LS, l);
-    }
-  }
-  save(LS, '\0', l);
-  if (!luaO_str2d(luaZ_buffer(LS->buff), &seminfo->r))
-    luaX_lexerror(LS, "malformed hex number", TK_NUMBER);
-}
+/* SCFA dialect port (keywords): lexer hooks (scfa_lex_hook, scfa_read_hex) */
+#define SCFA_IN_LLEX
+#include "scfa_keywords_impl.h"
 
 
 /* LUA_NUMBER */
@@ -196,14 +180,7 @@ static void read_numeral (LexState *LS, int comma, SemInfo *seminfo) {
   size_t l = 0;
   checkbuffer(LS, l);
   if (comma) save(LS, '.', l);
-  else if (LS->current == '0') {
-      save_and_next(LS, l);
-      if (LS->current == 'x' || LS->current == 'X') {
-        save_and_next(LS, l);
-        read_xnumeral(LS, seminfo, l);
-        return;
-      }
-  }
+  else if (scfa_read_hex(LS, seminfo, &l)) return;  /* SCFA: hexadecimal literal */
   while (isdigit(LS->current)) {
     checkbuffer(LS, l);
     save_and_next(LS, l);
@@ -342,16 +319,18 @@ static void read_string (LexState *LS, int del, SemInfo *seminfo) {
 
 int luaX_lex (LexState *LS, SemInfo *seminfo) {
   for (;;) {
+    {  /* SCFA: `#' comments, `<<' `>>', `!=' */
+      int tok;
+      switch (scfa_lex_hook(LS, seminfo, &tok)) {
+        case SCFA_LEX_AGAIN: continue;
+        case SCFA_LEX_TOKEN: return tok;
+        default: break;
+      }
+    }
     switch (LS->current) {
 
       case '\n': {
         inclinenumber(LS);
-        continue;
-      }
-      case '#': {
-        /* short comment */
-        while (LS->current != '\n' && LS->current != EOZ)
-          next(LS);
         continue;
       }
       case '-': {
@@ -381,21 +360,17 @@ int luaX_lex (LexState *LS, SemInfo *seminfo) {
       }
       case '<': {
         next(LS);
-        if (LS->current == '=') { next(LS); return TK_LE; }
-        else if (LS->current == '<') { next(LS); return TK_BSHL; }
-        else { return '<'; }
+        if (LS->current != '=') return '<';
+        else { next(LS); return TK_LE; }
       }
       case '>': {
         next(LS);
-        if (LS->current == '=') { next(LS); return TK_GE; }
-        else if (LS->current == '>') { next(LS); return TK_BSHR; }
-        else { return '>'; }
+        if (LS->current != '=') return '>';
+        else { next(LS); return TK_GE; }
       }
-      case '~':
-      case '!': {
-        char tok = LS->current;
+      case '~': {
         next(LS);
-        if (LS->current != '=') return tok;
+        if (LS->current != '=') return '~';
         else { next(LS); return TK_NE; }
       }
       case '"':

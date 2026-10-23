@@ -450,12 +450,9 @@ void luaC_sweep (lua_State *L, int all) {
 }
 
 
-static void markmt (GCState *st) {
-  int i;
-  global_State *g = st->g;
-  for (i=0; i<NUM_TAGS; i++)
-    if (g->mt[i]) markvalue(st, g->mt[i]);
-}
+/* SCFA dialect port (types): scfa_markmt marks the basic-type metatables */
+#define SCFA_IN_LGC
+#include "scfa_types_impl.h"
 
 
 /* mark root set */
@@ -464,7 +461,7 @@ static void markroot (GCState *st, lua_State *L) {
   markobject(st, defaultmeta(L));
   markobject(st, registry(L));
   traversestack(st, g->mainthread);
-  markmt(st);
+  scfa_markmt(st);  /* SCFA */
   if (L != g->mainthread)  /* another thread is running? */
     markvalue(st, L);  /* cannot collect it */
 }

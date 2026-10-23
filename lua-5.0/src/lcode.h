@@ -25,7 +25,7 @@
 */
 typedef enum BinOpr {
   OPR_ADD, OPR_SUB, OPR_MULT, OPR_DIV,
-  OPR_BAND, OPR_BOR, OPR_BSHL, OPR_BSHR,
+  SCFA_OPR_BITS  /* SCFA bitwise operators */
   OPR_XOR,
   OPR_CONCAT,
   OPR_NE, OPR_EQ,

@@ -85,6 +85,14 @@ typedef int (*lua_Chunkwriter) (lua_State *L, const void* p,
 
 
 /* type of numbers in Lua */
+/* SCFA dialect port (types): -DLUA_NUMBER_FLOAT32 selects 32-bit float numbers */
+#include "scfa_types.h"
+#if defined(LUA_NUMBER_FLOAT32) && !defined(LUA_NUMBER)
+#define LUA_NUMBER		SCFA_NUMBER_TYPE
+#define LUA_NUMBER_SCAN		SCFA_NUMBER_SCAN
+#define LUA_NUMBER_FMT		SCFA_NUMBER_FMT
+#endif
+
 #ifndef LUA_NUMBER
 typedef double lua_Number;
 #else

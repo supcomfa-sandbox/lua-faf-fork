@@ -34,10 +34,7 @@ const char *const luaP_opnames[] = {
   "SUB",
   "MUL",
   "DIV",
-  "BAND",
-  "BOR",
-  "BSHL",
-  "BSHR",
+  SCFA_OPNAMES_BITS
   "XOR",
   "UNM",
   "NOT",
@@ -85,10 +82,8 @@ const lu_byte luaP_opmodes[NUM_OPCODES] = {
  ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_SUB */
  ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_MUL */
  ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_DIV */
- ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_BAND */
- ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_BOR */
- ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_BSHL */
- ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_BSHR */
+#define SCFA_X_OPMODE(n, l, r) ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_##n */
+ SCFA_BIT_OPS(SCFA_X_OPMODE)
  ,opmode(0, 0, 1, 1, 1, 0, iABC)		/* OP_XOR */
  ,opmode(0, 1, 0, 0, 1, 0, iABC)		/* OP_UNM */
  ,opmode(0, 1, 0, 0, 1, 0, iABC)		/* OP_NOT */

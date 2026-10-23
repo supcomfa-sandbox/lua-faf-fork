@@ -11,6 +11,7 @@
 #include "lobject.h"
 #include "ltable.h"
 #include "lzio.h"
+#include "scfa_keywords.h"  /* SCFA dialect port */
 
 
 /*

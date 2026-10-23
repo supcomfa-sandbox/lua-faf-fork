@@ -27,6 +27,8 @@
 #include "ltable.h"
 #include "ltm.h"
 #include "lvm.h"
+#define SCFA_IN_LVM
+#include "scfa_types_impl.h"  /* SCFA dialect port (types): bit operators */
 
 
 
@@ -558,51 +560,15 @@ StkId luaV_execute (lua_State *L) {
           Arith(L, ra, rb, rc, TM_DIV);
         break;
       }
-      case OP_BAND: {
-        TObject *rb = RKB(i);
-        TObject *rc = RKC(i);
-        if (ttisnumber(rb) && ttisnumber(rc)) {
-          setnvalue(ra, (unsigned int) nvalue(rb) & (unsigned int) nvalue(rc));
-        }
-        else
-          luaG_runerror(L, "`&' operands must be numbers");
-        break;
-      }
-      case OP_BOR: {
-        TObject *rb = RKB(i);
-        TObject *rc = RKC(i);
-        if (ttisnumber(rb) && ttisnumber(rc)) {
-          setnvalue(ra, (unsigned int) nvalue(rb) | (unsigned int) nvalue(rc));
-        }
-        else
-          luaG_runerror(L, "`|' operands must be numbers");
-        break;
-      }
-      case OP_BSHL: {
-        TObject *rb = RKB(i);
-        TObject *rc = RKC(i);
-        if (ttisnumber(rb) && ttisnumber(rc)) {
-          setnvalue(ra, (unsigned int) nvalue(rb) << (unsigned int) nvalue(rc));
-        }
-        else
-          luaG_runerror(L, "`<<' operands must be numbers");
-        break;
-      }
-      case OP_BSHR: {
-        TObject *rb = RKB(i);
-        TObject *rc = RKC(i);
-        if (ttisnumber(rb) && ttisnumber(rc)) {
-          setnvalue(ra, (unsigned int) nvalue(rb) >> (unsigned int) nvalue(rc));
-        }
-        else
-          luaG_runerror(L, "`>>' operands must be numbers");
+      SCFA_OPCASES_BITS {  /* SCFA: & | << >> */
+        scfa_vm_bitop(L, GET_OPCODE(i), ra, RKB(i), RKC(i));
         break;
       }
       case OP_XOR: {
         TObject *rb = RKB(i);
         TObject *rc = RKC(i);
         if (ttisnumber(rb) && ttisnumber(rc)) {
-          setnvalue(ra, (unsigned int) nvalue(rb) ^ (unsigned int) nvalue(rc));
+          setnvalue(ra, SCFA_XOR(nvalue(rb), nvalue(rc)));
         }
         else
           Arith(L, ra, RKB(i), RKC(i), TM_XOR);

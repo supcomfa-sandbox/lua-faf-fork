@@ -112,10 +112,7 @@ static void PrintCode(const Proto* f)
    case OP_SUB:
    case OP_MUL:
    case OP_DIV:
-   case OP_BAND:
-   case OP_BOR:
-   case OP_BSHL:
-   case OP_BSHR:
+   SCFA_OPCASES_BITS
    case OP_XOR:
    case OP_EQ:
    case OP_LT:
