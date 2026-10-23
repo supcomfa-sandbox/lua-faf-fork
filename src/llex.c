@@ -33,14 +33,19 @@
 #define currIsNewline(ls)	(ls->current == '\n' || ls->current == '\r')
 
 
+/* SCFA dialect port (keywords): lexer hooks scfa_lex_hook / scfa_lex_start */
+#define SCFA_IN_LLEX
+#include "scfa_keywords_impl.h"
+
+
 /* ORDER RESERVED */
 const char *const luaX_tokens [] = {
-    "and", "break", "continue", "do", "else", "elseif",
+    "and", "break", SCFA_STR_RESERVED "do", "else", "elseif",
     "end", "false", "for", "function", "if",
     "in", "local", "nil", "not", "or", "repeat",
     "return", "then", "true", "until", "while",
     "..", "...", "==", ">=", "<=", "~=",
-    "<number>", "<name>", "<string>", "<<", ">>", "<eof>",
+    "<number>", "<name>", "<string>", SCFA_STR_EXTRA "<eof>",
     NULL
 };
 
@@ -148,14 +153,7 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source) {
   ls->source = source;
   luaZ_resizebuffer(ls->L, ls->buff, LUA_MINBUFFER);  /* initialize buffer */
   next(ls);  /* read first char */
-  /* SCFA: skip a UTF-8 BOM at the start of any chunk (files and strings) */
-  if (ls->current == 0xEF) {
-    next(ls);
-    if (ls->current == 0xBB) {
-      next(ls);
-      if (ls->current == 0xBF) next(ls);
-    }
-  }
+  scfa_lex_start(ls);  /* SCFA: skip a UTF-8 BOM */
 }
 
 
@@ -342,16 +340,18 @@ static void read_string (LexState *ls, int del, SemInfo *seminfo) {
 static int llex (LexState *ls, SemInfo *seminfo) {
   luaZ_resetbuffer(ls->buff);
   for (;;) {
+    {  /* SCFA: `#' comments, `<<' `>>', `!=' */
+      int tok;
+      switch (scfa_lex_hook(ls, seminfo, &tok)) {
+        case SCFA_LEX_AGAIN: continue;
+        case SCFA_LEX_TOKEN: return tok;
+        default: break;
+      }
+    }
     switch (ls->current) {
       case '\n':
       case '\r': {
         inclinenumber(ls);
-        continue;
-      }
-      case '#': {
-        /* SCFA: `#' starts a short comment (the length operator is not available) */
-        while (!currIsNewline(ls) && ls->current != EOZ)
-          next(ls);
         continue;
       }
       case '-': {
@@ -389,21 +389,17 @@ static int llex (LexState *ls, SemInfo *seminfo) {
       }
       case '<': {
         next(ls);
-        if (ls->current == '=') { next(ls); return TK_LE; }
-        else if (ls->current == '<') { next(ls); return TK_BSHL; }  /* SCFA */
-        else return '<';
+        if (ls->current != '=') return '<';
+        else { next(ls); return TK_LE; }
       }
       case '>': {
         next(ls);
-        if (ls->current == '=') { next(ls); return TK_GE; }
-        else if (ls->current == '>') { next(ls); return TK_BSHR; }  /* SCFA */
-        else return '>';
+        if (ls->current != '=') return '>';
+        else { next(ls); return TK_GE; }
       }
-      case '~':
-      case '!': {  /* SCFA: `!=' is a synonym of `~=' */
-        int tok = ls->current;
+      case '~': {
         next(ls);
-        if (ls->current != '=') return tok;
+        if (ls->current != '=') return '~';
         else { next(ls); return TK_NE; }
       }
       case '"':

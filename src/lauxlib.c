@@ -23,6 +23,7 @@
 #include "lua.h"
 
 #include "lauxlib.h"
+#include "scfa_keywords.h"
 
 
 #define FREELIST_REF	0	/* free list of references */
@@ -520,22 +521,28 @@ LUALIB_API void luaL_unref (lua_State *L, int t, int ref) {
 */
 
 typedef struct LoadF {
+  SCFA_LOADF_FIELDS  /* SCFA: characters read while looking for a BOM */
   int extraline;
-  int npre;  /* number of pre-read characters in `pre' (partial BOM) */
-  char pre[3];
   FILE *f;
   char buff[LUAL_BUFFERSIZE];
 } LoadF;
 
 
+/* SCFA dialect port (keywords): UTF-8 BOM skipping for luaL_loadfile */
+#define SCFA_IN_LAUXLIB
+#include "scfa_keywords_impl.h"
+
+
 static const char *getF (lua_State *L, void *ud, size_t *size) {
   LoadF *lf = (LoadF *)ud;
+  const char *pre;
   (void)L;
   if (lf->extraline) {
     lf->extraline = 0;
     *size = 1;
     return "\n";
   }
+  if ((pre = scfa_loadf_pre(lf, size)) != NULL) return pre;  /* SCFA */
   if (feof(lf->f)) return NULL;
   *size = fread(lf->buff, 1, sizeof(lf->buff), lf->f);
   return (*size > 0) ? lf->buff : NULL;
@@ -548,21 +555,6 @@ static int errfile (lua_State *L, const char *what, int fnameindex) {
   lua_pushfstring(L, "cannot %s %s: %s", what, filename, serr);
   lua_remove(L, fnameindex);
   return LUA_ERRFILE;
-}
-
-
-/* SCFA: skip an optional UTF-8 BOM; returns the first character after it */
-static int skipBOM (LoadF *lf) {
-  static const char bom[] = "﻿";
-  int c, i;
-  lf->npre = 0;
-  for (i = 0; i < 3; i++) {
-    c = getc(lf->f);
-    if (c == EOF || c != (unsigned char)bom[i]) return c;
-    lf->pre[lf->npre++] = (char)c;
-  }
-  lf->npre = 0;  /* complete BOM: discard it */
-  return getc(lf->f);
 }
 
 
@@ -582,7 +574,7 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
     lf.f = fopen(filename, "r");
     if (lf.f == NULL) return errfile(L, "open", fnameindex);
   }
-  c = skipBOM(&lf);
+  c = scfa_loadf_skipBOM(&lf);  /* SCFA: skip a UTF-8 BOM */
   if (c == '#') {  /* Unix exec. file? */
     lf.extraline = 1;
     while ((c = getc(lf.f)) != EOF && c != '\n') ;  /* skip first line */

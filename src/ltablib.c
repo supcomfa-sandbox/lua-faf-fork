@@ -19,6 +19,11 @@
 #define aux_getn(L,n)	(luaL_checktype(L, n, LUA_TTABLE), luaL_getn(L, n))
 
 
+/* SCFA dialect port (types): table.getsize/empty/unpack/clone, Lua 5.0 getn/setn */
+#define SCFA_IN_LTABLIB
+#include "scfa_types_impl.h"
+
+
 static int foreachi (lua_State *L) {
   int i;
   int n = aux_getn(L, 1);
@@ -69,14 +74,7 @@ static int maxn (lua_State *L) {
 }
 
 
-/* SCFA / Lua 5.0: table.setn stores the count in field `n'; table.getn returns
-   it when it is a number, otherwise the border (5.1 length) */
 static int getn (lua_State *L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  lua_pushliteral(L, "n");
-  lua_rawget(L, 1);
-  if (lua_type(L, -1) == LUA_TNUMBER) return 1;
-  lua_pop(L, 1);
   lua_pushinteger(L, aux_getn(L, 1));
   return 1;
 }
@@ -84,9 +82,11 @@ static int getn (lua_State *L) {
 
 static int setn (lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
-  lua_pushliteral(L, "n");
-  lua_pushinteger(L, luaL_checkint(L, 2));
-  lua_rawset(L, 1);
+#ifndef luaL_setn
+  luaL_setn(L, 1, luaL_checkint(L, 2));
+#else
+  luaL_error(L, LUA_QL("setn") " is obsolete");
+#endif
   lua_pushvalue(L, 1);
   return 1;
 }
@@ -287,10 +287,7 @@ static const luaL_Reg tab_funcs[] = {
 
 LUALIB_API int luaopen_table (lua_State *L) {
   luaL_register(L, LUA_TABLIBNAME, tab_funcs);
-#if defined(LUA_SCFA_TABLEFUNCS)
-  luaopen_scfa_tablefuncs(L);
-  lua_pop(L, 1);
-#endif
+  scfa_open_tablefuncs(L);  /* SCFA */
   return 1;
 }
 

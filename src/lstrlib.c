@@ -824,10 +824,9 @@ static int str_format (lua_State *L) {
 }
 
 
-/* SCFA: string.lualex exists in the game but is a stub here (as in lua-lang) */
-static int str_lualex (lua_State *L) {
-  return 1;
-}
+/* SCFA dialect port (types): string.lualex stub */
+#define SCFA_IN_LSTRLIB
+#include "scfa_types_impl.h"
 
 
 static const luaL_Reg strlib[] = {
@@ -839,7 +838,6 @@ static const luaL_Reg strlib[] = {
   {"gfind", gfind_nodef},
   {"gmatch", gmatch},
   {"gsub", str_gsub},
-  {"lualex", str_lualex},
   {"len", str_len},
   {"lower", str_lower},
   {"match", str_match},
@@ -868,6 +866,7 @@ static void createmetatable (lua_State *L) {
 */
 LUALIB_API int luaopen_string (lua_State *L) {
   luaL_register(L, LUA_STRLIBNAME, strlib);
+  scfa_open_stringfuncs(L);  /* SCFA */
 #if defined(LUA_COMPAT_GFIND)
   lua_getfield(L, -1, "gmatch");
   lua_setfield(L, -2, "gfind");

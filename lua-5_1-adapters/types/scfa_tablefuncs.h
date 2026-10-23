@@ -1,15 +1,10 @@
 /*
 ** SCFA extra table functions: table.getsize, table.empty, table.unpack(t,i,j)
 ** and table.clone, as added by the Forged Alliance executable on top of the
-** stock table library. Optional: enabled by LUA_SCFA_TABLEFUNCS (luaconf.h).
+** stock table library, plus the Lua 5.0 table.getn/setn (field n). Included by
+** ltablib.c (SCFA dialect port "types", 5.1 adapter) and overlaid on the table
+** library by scfa_open_tablefuncs.
 */
-
-#define lscfa_tablefuncs_c
-#define LUA_CORE
-
-#include "lua.h"
-#include "lauxlib.h"
-#include "lualib.h"
 
 
 /* table.getsize(t): number of non-nil entries (array + hash); 0 for non-tables */
@@ -100,17 +95,42 @@ static int tf_clone (lua_State *L) {
 }
 
 
+/* Lua 5.0 behaviour kept on the 5.1 VM: table.setn stores the count in field `n';
+   table.getn returns it when it is a number, otherwise the 5.1 border */
+static int scfa_getn (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_pushliteral(L, "n");
+  lua_rawget(L, 1);
+  if (lua_type(L, -1) == LUA_TNUMBER) return 1;
+  lua_pop(L, 1);
+  lua_pushinteger(L, luaL_getn(L, 1));
+  return 1;
+}
+
+
+static int scfa_setn (lua_State *L) {
+  luaL_checktype(L, 1, LUA_TTABLE);
+  lua_pushliteral(L, "n");
+  lua_pushinteger(L, luaL_checkint(L, 2));
+  lua_rawset(L, 1);
+  lua_pushvalue(L, 1);
+  return 1;
+}
+
+
 static const luaL_Reg tablefuncs[] = {
   {"getsize", tf_getsize},
   {"empty", tf_empty},
   {"unpack", tf_unpack},
   {"clone", tf_clone},
+  {"getn", scfa_getn},
+  {"setn", scfa_setn},
   {NULL, NULL}
 };
 
 
-/* overlay the SCFA functions onto the table at the top of the stack */
-LUALIB_API int luaopen_scfa_tablefuncs (lua_State *L) {
+/* overlay the SCFA functions onto the table library */
+static void scfa_open_tablefuncs (lua_State *L) {
   luaL_register(L, LUA_TABLIBNAME, tablefuncs);
-  return 1;
+  lua_pop(L, 1);
 }
