@@ -34,6 +34,9 @@
 #include "lstate.h"
 #include "ltable.h"
 
+#define SCFA_IN_LTABLE_C
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi) */
+
 
 /*
 ** max size of array part is 2^MAXBITS
@@ -358,7 +361,7 @@ static void rehash (lua_State *L, Table *t, const TValue *ek) {
 Table *luaH_new (lua_State *L, int narray, int nhash) {
   Table *t = luaM_new(L, Table);
   luaC_link(L, obj2gco(t), LUA_TTABLE);
-  t->metatable = NULL;
+  t->metatable = SCFA_NEWTABLE_META(L);  /* SCFA: default metatable (normally NULL) */
   t->flags = cast_byte(~0);
   /* temporary values (kept only if some malloc fails) */
   t->array = NULL;

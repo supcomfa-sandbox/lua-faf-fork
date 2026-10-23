@@ -1085,3 +1085,7 @@ LUA_API const char *lua_setupvalue (lua_State *L, int funcindex, int n) {
   return name;
 }
 
+
+
+#define SCFA_IN_LAPI_C
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi): the API functions */

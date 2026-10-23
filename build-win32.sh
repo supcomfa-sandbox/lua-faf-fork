@@ -7,7 +7,7 @@ set -e
 export PATH=/c/msys64/mingw32/bin:$PATH
 OUT=${1:-build}; [ $# -gt 0 ] && shift
 mkdir -p "$OUT"
-INC="-Ilua5_0-api/keywords -Ilua5_0-api/types -Ilua-5_1-adapters/keywords -Ilua-5_1-adapters/types"
+INC="-Ilua5_0-api/keywords -Ilua5_0-api/types -Ilua5_0-api/gpgapi -Ilua-5_1-adapters/keywords -Ilua-5_1-adapters/types -Ilua-5_1-adapters/gpgapi"
 CORE="lapi lcode ldebug ldo ldump lfunc lgc llex lmem lobject lopcodes lparser lstate lstring ltable ltm lundump lvm lzio"
 LIB="lauxlib lbaselib ldblib liolib lmathlib loslib ltablib lstrlib loadlib linit"
 SRCS=""; for f in $CORE $LIB; do SRCS="$SRCS src/$f.c"; done

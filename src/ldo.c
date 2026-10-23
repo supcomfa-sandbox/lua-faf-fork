@@ -30,6 +30,9 @@
 #include "lvm.h"
 #include "lzio.h"
 
+#define SCFA_IN_LDO_C
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi) */
+
 
 
 
@@ -97,6 +100,7 @@ void luaD_throw (lua_State *L, int errcode) {
     LUAI_THROW(L, L->errorJmp);
   }
   else {
+    SCFA_UNPROTECTED_ERROR(L, errcode, resetstack);  /* SCFA: C++ build throws */
     L->status = cast_byte(errcode);
     if (G(L)->panic) {
       resetstack(L, errcode);

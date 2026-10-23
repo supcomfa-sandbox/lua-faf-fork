@@ -99,6 +99,7 @@ static void preinit_state (lua_State *L, global_State *g) {
   L->savedpc = NULL;
   L->errfunc = 0;
   setnilvalue(gt(L));
+  SCFA_STATE_INIT(L);  /* SCFA: user pointer (not inherited by new threads) */
 }
 
 
@@ -179,6 +180,7 @@ LUA_API lua_State *lua_newstate (lua_Alloc f, void *ud) {
   g->gcstepmul = LUAI_GCMUL;
   g->gcdept = 0;
   for (i=0; i<NUM_TAGS; i++) g->mt[i] = NULL;
+  SCFA_GLOBAL_INIT(g);  /* SCFA */
   if (luaD_rawrunprotected(L, f_luaopen, NULL) != 0) {
     /* memory allocation error: free partial state */
     close_state(L);

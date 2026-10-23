@@ -22,6 +22,9 @@
 #include "ltable.h"
 #include "ltm.h"
 
+#define SCFA_IN_LGC_C
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi) */
+
 
 #define GCSTEPSIZE	1024u
 #define GCSWEEPMAX	40
@@ -301,6 +304,7 @@ static l_mem propagatemark (global_State *g) {
       g->grayagain = o;
       black2gray(o);
       traversestack(g, th);
+      SCFA_THREAD_TRAVERSED(g, th);  /* SCFA: user GC hook */
       return sizeof(lua_State) + sizeof(TValue) * th->stacksize +
                                  sizeof(CallInfo) * th->size_ci;
     }
@@ -494,6 +498,7 @@ static void markmt (global_State *g) {
   int i;
   for (i=0; i<NUM_TAGS; i++)
     if (g->mt[i]) markobject(g, g->mt[i]);
+  SCFA_MARK_ROOTS(g);  /* SCFA: default metatables of tables / userdata */
 }
 
 
@@ -708,3 +713,7 @@ void luaC_linkupval (lua_State *L, UpVal *uv) {
   }
 }
 
+
+
+#define SCFA_IN_LGC_C_API
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi): luaC_scfa_mark */
