@@ -1,0 +1,5 @@
+# Both providers use the 5.0 runtime path; only this file changes between the two runs.
+[providers]
+lua50 = { impl = "lua50_passthrough" }
+[default]
+provider = "lua50"

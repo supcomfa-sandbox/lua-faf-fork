@@ -1,0 +1,6 @@
+# Same test, default provider now backed by the 5.1 runtime (lua51 impl, runtime 51float).
+[providers]
+lua50 = { impl = "lua50_passthrough" }
+lua51 = { impl = "lua51", runtime = "51float" }
+[default]
+provider = "lua51"

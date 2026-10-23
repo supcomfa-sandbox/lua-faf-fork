@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/supcomfa-sandbox/lua-faf-fork/adapter/seams/seams.schema.json",
+  "title": "Lua seam map for one SupCom/FAF exe build",
+  "description": "Every Lua VM function the exe calls from outside the VM (a seam), plus the places the exe reaches into Lua data directly. Source of truth for the ILua5_0 adapter and the hook's detour table. See README.md in this directory.",
+  "type": "object",
+  "required": ["schema_version", "exe", "generated", "seams", "direct_access"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {"type": "string"},
+    "schema_version": {"const": 1},
+    "exe": {
+      "type": "object",
+      "description": "The build(s) the addresses refer to.",
+      "required": ["faf"],
+      "additionalProperties": false,
+      "properties": {
+        "faf": {"$ref": "#/$defs/exe_build"},
+        "steam": {"$ref": "#/$defs/exe_build"}
+      }
+    },
+    "generated": {
+      "type": "object",
+      "required": ["tool"],
+      "additionalProperties": false,
+      "properties": {
+        "tool": {"type": "string", "description": "e.g. 'ctrl.py re lua-seams export'."},
+        "note": {"type": "string"}
+      }
+    },
+    "seams": {"type": "array", "items": {"$ref": "#/$defs/seam"}},
+    "direct_access": {"type": "array", "items": {"$ref": "#/$defs/direct_access"}}
+  },
+  "$defs": {
+    "hex": {"type": "string", "pattern": "^0x[0-9a-f]{1,8}$", "description": "Lowercase hex virtual address, 0x-prefixed."},
+    "exe_build": {
+      "type": "object",
+      "required": ["file"],
+      "additionalProperties": false,
+      "properties": {
+        "file": {"type": "string", "description": "e.g. ForgedAlliance.exe"},
+        "note": {"type": "string"}
+      }
+    },
+    "seam": {
+      "type": "object",
+      "required": ["name", "layer", "signature", "calling_convention", "addr", "callers", "subsystems", "category", "ilua50", "break_51", "detourable", "gpg_addition", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {"type": "string", "minLength": 1, "description": "Unique. Lua API name, or Class::method(argtypes) for LuaPlus."},
+        "layer": {"enum": ["lapi", "lauxlib", "luaplus", "gpg_ext", "vm_internal", "serializer"]},
+        "signature": {"type": "string", "description": "C/C++ prototype as best known; 'unknown' when no declaration exists."},
+        "calling_convention": {"enum": ["cdecl", "thiscall", "stdcall", "unknown"]},
+        "calling_convention_evidence": {"type": "string", "description": "What the disassembly showed (ecx read, ret N ...)."},
+        "calling_convention_source": {"enum": ["disasm", "inferred"], "description": "disasm = classified from the function's own bytes; inferred = guessed from the name."},
+        "addr": {
+          "type": "object",
+          "required": ["faf", "steam"],
+          "additionalProperties": false,
+          "properties": {
+            "faf": {"$ref": "#/$defs/hex"},
+            "steam": {"anyOf": [{"$ref": "#/$defs/hex"}, {"type": "null"}], "description": "null when the function could not be mapped to the Steam build."},
+            "steam_confidence": {"type": "string", "description": "'unique', 'twin-ambiguous (identical code xN in FAF)', 'ambiguous-resolved-by-order', 'none'."}
+          }
+        },
+        "callers": {
+          "type": "object",
+          "required": ["sites", "functions", "patch_sites"],
+          "additionalProperties": false,
+          "properties": {
+            "sites": {"type": "integer", "minimum": 0, "description": "Direct call sites in the engine proper (FAF .text), call + tail jmp."},
+            "functions": {"type": "integer", "minimum": 0, "description": "Distinct engine functions containing those sites."},
+            "patch_sites": {"type": "integer", "minimum": 0, "description": "Call sites in FAF patch code (.exxt)."},
+            "tail_jmp_sites": {"type": "integer", "minimum": 0},
+            "eh_unwind_sites": {"type": "integer", "minimum": 0, "description": "Calls/jmps from MSVC EH unwind funclets (not in 'sites')."},
+            "fnptr_store_sites": {"type": "integer", "minimum": 0, "description": "Places that store the address as a function pointer."},
+            "bound_c_function_callers": {"type": "integer", "minimum": 0, "description": "Of 'functions', how many are Lua-bound C functions (luaFuncDescReg)."},
+            "steam_sites": {"type": ["integer", "null"], "minimum": 0, "description": "Engine call sites counted in the Steam build."}
+          }
+        },
+        "subsystems": {
+          "type": "array",
+          "description": "Top engine subsystems calling this seam, biggest first.",
+          "items": {
+            "type": "object",
+            "required": ["name", "sites"],
+            "additionalProperties": false,
+            "properties": {"name": {"type": "string"}, "sites": {"type": "integer", "minimum": 0}}
+          }
+        },
+        "example_callers": {"type": "array", "items": {"type": "string"}, "description": "Caller function addresses (hex, no 0x) with an optional ':label'."},
+        "category": {"type": "string", "description": "Functional group, e.g. 'stack ops', 'table get/set', 'LuaPlus wrapper'."},
+        "ilua50": {"type": ["string", "null"], "description": "Name of the ILua5_0 entry (adapter/include/ilua50.h) that carries this seam, or null if not in the interface yet."},
+        "break_51": {
+          "type": "object",
+          "required": ["type", "detail", "fix_hint"],
+          "additionalProperties": false,
+          "properties": {
+            "type": {"enum": ["none", "semantics", "renamed", "removed", "layout"]},
+            "detail": {"type": "string"},
+            "fix_hint": {"type": "string"}
+          },
+          "allOf": [{"if": {"properties": {"type": {"not": {"const": "none"}}}}, "then": {"properties": {"detail": {"minLength": 1}}}}]
+        },
+        "detourable": {
+          "type": "object",
+          "required": ["value"],
+          "additionalProperties": false,
+          "properties": {
+            "value": {"type": "boolean"},
+            "level": {"type": "string", "description": "The census' detour level, e.g. 'function-level (reimplement)'."},
+            "reason": {"type": "string"}
+          },
+          "if": {"properties": {"value": {"const": false}}},
+          "then": {"required": ["reason"], "properties": {"reason": {"minLength": 1}}}
+        },
+        "gpg_addition": {"type": "boolean", "description": "GPG-specific API (not in stock Lua 5.0) or a GPG-changed one that FAF relies on; the 5.1 provider must supply it."},
+        "status": {
+          "type": "object",
+          "required": ["state"],
+          "additionalProperties": false,
+          "properties": {
+            "state": {"enum": ["unmapped", "in_interface", "detoured", "provided"]},
+            "provided_by": {"type": "array", "items": {"type": "string"}, "uniqueItems": true, "description": "Provider names from the provider map ([providers]) that implement it."}
+          },
+          "allOf": [
+            {"if": {"properties": {"state": {"const": "unmapped"}}}, "then": {"not": {"required": ["provided_by"]}}},
+            {"if": {"properties": {"state": {"const": "provided"}}}, "then": {"required": ["provided_by"], "properties": {"provided_by": {"minItems": 1}}}}
+          ]
+        },
+        "notes": {"type": "string"}
+      },
+      "allOf": [
+        {"if": {"properties": {"ilua50": {"type": "string"}}, "required": ["ilua50"]}, "then": {"properties": {"status": {"properties": {"state": {"not": {"const": "unmapped"}}}}}}},
+        {"if": {"properties": {"ilua50": {"type": "null"}}, "required": ["ilua50"]}, "then": {"properties": {"status": {"properties": {"state": {"const": "unmapped"}}}}}}
+      ]
+    },
+    "direct_access": {
+      "type": "object",
+      "required": ["id", "site", "touches", "owner", "access", "break_51", "fix_hint"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^D[0-9]{2,}$"},
+        "site": {"type": "object", "required": ["faf"], "additionalProperties": false, "properties": {
+          "where": {"type": "string", "description": "Which code: engine proper, LuaPlus wrapper, FAF patch ..."},
+          "faf": {"type": "string"},
+          "steam": {"type": "string"}
+        }},
+        "touches": {"type": "string", "description": "What data is touched (struct, offset)."},
+        "owner": {"enum": ["luaplus", "faf_patch", "serializer", "engine"], "description": "Who must be fixed: the LuaPlus wrapper, a FAF binary patch, the serializer, or engine code proper (no owner we control)."},
+        "access": {"type": "string"},
+        "sites": {"type": "integer", "minimum": 0},
+        "break_51": {"type": "string"},
+        "fix_hint": {"type": "string"},
+        "evidence": {"type": "string"}
+      }
+    }
+  }
+}
