@@ -98,6 +98,29 @@ eq("table.unpack default", "local a, b, c = table.unpack({7, 8, 9}) return a + b
 eq("table.clone deep", "local t = {a = {b = 1}} local c = table.clone(t) c.a.b = 2 return t.a.b * 10 + c.a.b", 12)
 eq("table.clone cycle-safe", "local t = {} t.self = t local c = table.clone(t) return c.self == c and c ~= t", true)
 
+-- table preallocation hints {&hash &array} (LuaPlus): parsed, no visible effect
+eq("prealloc hints both", "local t = {&1 &8} return type(t)", "table")
+eq("prealloc hints empty", "local t = {&1 &8} return next(t) == nil", true)
+eq("prealloc hints with content", "local t = {&2 &4 a = 1, b = 2, 10, 20} return t.a + t.b + t[1] + t[2]", 33)
+eq("prealloc hints no space", "local t = {&1&8} return type(t)", "table")
+eq("prealloc hints then separator", "local t = {&0 &2; 5, 6} return t[1] * t[2]", 30)
+eq("prealloc single hint", "local t = {&3 x = 1} return t.x", 1)
+eq("prealloc content larger than hint", "local t = {&1 &1 1, 2, 3, 4} return t[4]", 4)
+bad("prealloc needs a number", "local t = {&x}")
+eq("bitand still works near constructor", "local t = {1 & 3, 2} return t[1] + t[2]", 3)
+
+-- dialect details kept from the fork
+do
+  local f = loadstring("return arg")
+  setfenv(f, {})  -- the standalone interpreter defines a global `arg`; look at the chunk itself
+  check("no implicit arg in main chunk", f() == nil)
+end
+eq("implicit arg in vararg function (5.0 compat)", "local function f(...) return arg.n end return f(1, 2, 3)", 3)
+bad("ambiguous call across newline", "local f = print\nf\n('x')", "ambiguous")
+
+-- BOM / strings via loadstring
+eq("loadstring skips UTF-8 BOM", "return loadstring('\\239\\187\\191return 6')()", 6)
+
 -- file loading: BOM and shebang
 do
   local name = (os.getenv("TEMP") or ".") .. os.tmpname()

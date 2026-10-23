@@ -509,12 +509,26 @@ static void constructor (LexState *ls, expdesc *t) {
   int line = ls->linenumber;
   int pc = luaK_codeABC(fs, OP_NEWTABLE, 0, 0, 0);
   struct ConsControl cc;
+  int hint[2] = {0, 0};  /* hash and array size hints */
+  int nhint = 0;
   cc.na = cc.nh = cc.tostore = 0;
   cc.t = t;
   init_exp(t, VRELOCABLE, pc);
   init_exp(&cc.v, VVOID, 0);  /* no value (yet) */
   luaK_exp2nextreg(ls->fs, t);  /* fix it at stack top (for gc) */
   checknext(ls, '{');
+  /* SCFA (LuaPlus) size hints: `{&hash &array ...}'; no visible effect */
+  while (ls->t.token == '&') {
+    luaX_next(ls);
+    if (ls->t.token != TK_NUMBER)
+      luaX_syntaxerror(ls, "table size hint (number) expected after `&'");
+    if (nhint < 2) {  /* clamp: hints are only a performance hint */
+      lua_Number r = ls->t.seminfo.r;
+      hint[nhint++] = (r > 0 && r < (1 << 20)) ? cast_int(r) : 0;
+    }
+    luaX_next(ls);
+  }
+  if (nhint > 0 && !testnext(ls, ',')) testnext(ls, ';');
   do {
     lua_assert(cc.v.k == VVOID || cc.tostore > 0);
     if (ls->t.token == '}') break;
@@ -540,6 +554,8 @@ static void constructor (LexState *ls, expdesc *t) {
   } while (testnext(ls, ',') || testnext(ls, ';'));
   check_match(ls, '}', '{', line);
   lastlistfield(fs, &cc);
+  if (hint[0] > cc.nh) cc.nh = hint[0];
+  if (hint[1] > cc.na) cc.na = hint[1];
   SETARG_B(fs->f->code[pc], luaO_int2fb(cc.na)); /* set initial array size */
   SETARG_C(fs->f->code[pc], luaO_int2fb(cc.nh));  /* set initial table size */
 }
