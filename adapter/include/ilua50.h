@@ -42,13 +42,36 @@ typedef struct ILua5_0 ILua5_0;
 
 /* THE provider interface is ILua5_0 (there is no separate ILuaProvider): the seam detours, the
  * middleware (lua_adapter.h) and every implementation (passthrough, a 5.1 provider) all speak it.
- * The list below is the single source of truth: X(ret, name, (self, params), (args), state-arg).
+ * The list below is the single source of truth: X(ret, name, (self, params), (args), (SELF, args), state-arg).
  * The state-arg is `L` for calls bound to a lua_State, `NULL` for calls that create one. */
-#define ILUA50_FUNCS(X)   X(lua_State*, lua_open,           (ILua5_0 *self),                                        (),            NULL)   X(void,       lua_close,          (ILua5_0 *self, lua_State *L),                          (L),           L)   X(lua_State*, lua_newthread,      (ILua5_0 *self, lua_State *L),                          (L),           L)   X(int,        lua_gettop,         (ILua5_0 *self, lua_State *L),                          (L),           L)   X(void,       lua_settop,         (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(void,       lua_pushvalue,      (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(void,       lua_gettable,       (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(void,       lua_settable,       (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(void,       lua_rawget,         (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(void,       lua_rawset,         (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(void,       lua_pushnumber,     (ILua5_0 *self, lua_State *L, lua_Number n),            (L, n),        L)   X(void,       lua_pushstring,     (ILua5_0 *self, lua_State *L, const char *s),           (L, s),        L)   X(void,       lua_pushboolean,    (ILua5_0 *self, lua_State *L, int b),                   (L, b),        L)   X(void,       lua_pushnil,        (ILua5_0 *self, lua_State *L),                          (L),           L)   X(lua_Number, lua_tonumber,       (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(const char*,lua_tostring,       (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(int,        lua_toboolean,      (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(int,        lua_type,           (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(int,        lua_next,           (ILua5_0 *self, lua_State *L, int idx),                 (L, idx),      L)   X(void,       lua_call,           (ILua5_0 *self, lua_State *L, int nargs, int nresults), (L, nargs, nresults), L)   X(int,        lua_pcall,          (ILua5_0 *self, lua_State *L, int nargs, int nresults, int errfunc), (L, nargs, nresults, errfunc), L)   X(int,        lua_resume,         (ILua5_0 *self, lua_State *L, int narg),                (L, narg),     L)   X(void,       lua_setgcthreshold, (ILua5_0 *self, lua_State *L, int newthreshold),        (L, newthreshold), L)
+#define ILUA50_FUNCS(X) \
+  X(lua_State*, lua_open, (ILua5_0 *self), (), (SELF), NULL) \
+  X(void, lua_close, (ILua5_0 *self, lua_State *L), (L), (SELF, L), L) \
+  X(lua_State*, lua_newthread, (ILua5_0 *self, lua_State *L), (L), (SELF, L), L) \
+  X(int, lua_gettop, (ILua5_0 *self, lua_State *L), (L), (SELF, L), L) \
+  X(void, lua_settop, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(void, lua_pushvalue, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(void, lua_gettable, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(void, lua_settable, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(void, lua_rawget, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(void, lua_rawset, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(void, lua_pushnumber, (ILua5_0 *self, lua_State *L, lua_Number n), (L, n), (SELF, L, n), L) \
+  X(void, lua_pushstring, (ILua5_0 *self, lua_State *L, const char *s), (L, s), (SELF, L, s), L) \
+  X(void, lua_pushboolean, (ILua5_0 *self, lua_State *L, int b), (L, b), (SELF, L, b), L) \
+  X(void, lua_pushnil, (ILua5_0 *self, lua_State *L), (L), (SELF, L), L) \
+  X(lua_Number, lua_tonumber, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(const char*, lua_tostring, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(int, lua_toboolean, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(int, lua_type, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(int, lua_next, (ILua5_0 *self, lua_State *L, int idx), (L, idx), (SELF, L, idx), L) \
+  X(void, lua_call, (ILua5_0 *self, lua_State *L, int nargs, int nresults), (L, nargs, nresults), (SELF, L, nargs, nresults), L) \
+  X(int, lua_pcall, (ILua5_0 *self, lua_State *L, int nargs, int nresults, int errfunc), (L, nargs, nresults, errfunc), (SELF, L, nargs, nresults, errfunc), L) \
+  X(int, lua_resume, (ILua5_0 *self, lua_State *L, int narg), (L, narg), (SELF, L, narg), L) \
+  X(void, lua_setgcthreshold, (ILua5_0 *self, lua_State *L, int newthreshold), (L, newthreshold), (SELF, L, newthreshold), L)
 
 /* The interface: one function pointer per entry, `self` first. */
 struct ILua5_0 {
-#define ILUA50_MEMBER(R, N, PARAMS, ARGS, LP) R (*N) PARAMS;
+#define ILUA50_MEMBER(R, N, PARAMS, ARGS, SARGS, LP) R (*N) PARAMS;
   ILUA50_FUNCS(ILUA50_MEMBER)
 #undef ILUA50_MEMBER
 };

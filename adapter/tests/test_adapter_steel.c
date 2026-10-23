@@ -1,5 +1,5 @@
 /* Steel thread: engine-shaped calls -> LuaAdapter (middleware) -> ILua5_0 -> provider -> harness runtime DLL.
- * usage: test_adapter_steel <map.toml> <expected rt_variant of the default provider>
+ * usage: test_adapter_steel <map.toml> <expected rt_variant> <provider expected to serve the calls>
  * The same test runs against lua50 and lua51 by swapping only the .toml. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,7 +60,7 @@ static const char *SETUP =
 static const int EXPECT[] = { 0, 1, 0, 1, 1 };
 
 int main(int argc, char **argv) {
-  if (argc < 3) { printf("usage: %s map.toml expected_variant\n", argv[0]); return 2; }
+  if (argc < 4) { printf("usage: %s map.toml expected_variant\n", argv[0]); return 2; }
   char err[300] = "";
   char *toml = slurp(argv[1]);
   if (!toml) { printf("cannot read %s\n", argv[1]); return 2; }
@@ -99,8 +99,8 @@ int main(int argc, char **argv) {
   /* middleware saw everything, and the default provider's passthrough counted it */
   CHECK(lua_adapter_calls(a, "lua_call") == 2);
   CHECK(lua_adapter_calls(a, "lua_pcall") == 5);
-  LuaProvider *def = lua_adapter_provider_for_api(a, "lua_call");
-  CHECK(def && lua50_passthrough_calls_of(def, "lua_call") == 2);
+  LuaProvider *serving = lua_adapter_provider_named(a, argv[3]);   /* provider expected to have served the calls */
+  CHECK(serving && lua50_passthrough_calls_of(serving, "lua_call") == 2);
   printf("variant=%s calls=%lu pcall=%lu\n", rt_shim_variant(L), lua_adapter_calls(a, ""), lua_adapter_calls(a, "lua_pcall"));
   I->lua_close(I, L);
   lua_adapter_destroy(a);
