@@ -148,6 +148,14 @@ void luaX_setinput (lua_State *L, LexState *ls, ZIO *z, TString *source) {
   ls->source = source;
   luaZ_resizebuffer(ls->L, ls->buff, LUA_MINBUFFER);  /* initialize buffer */
   next(ls);  /* read first char */
+  /* SCFA: skip a UTF-8 BOM at the start of any chunk (files and strings) */
+  if (ls->current == 0xEF) {
+    next(ls);
+    if (ls->current == 0xBB) {
+      next(ls);
+      if (ls->current == 0xBF) next(ls);
+    }
+  }
 }
 
 
