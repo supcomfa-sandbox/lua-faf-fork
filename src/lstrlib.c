@@ -824,6 +824,12 @@ static int str_format (lua_State *L) {
 }
 
 
+/* SCFA: string.lualex exists in the game but is a stub here (as in lua-lang) */
+static int str_lualex (lua_State *L) {
+  return 1;
+}
+
+
 static const luaL_Reg strlib[] = {
   {"byte", str_byte},
   {"char", str_char},
@@ -833,6 +839,7 @@ static const luaL_Reg strlib[] = {
   {"gfind", gfind_nodef},
   {"gmatch", gmatch},
   {"gsub", str_gsub},
+  {"lualex", str_lualex},
   {"len", str_len},
   {"lower", str_lower},
   {"match", str_match},
