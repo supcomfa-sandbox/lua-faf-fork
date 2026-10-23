@@ -17,8 +17,13 @@ extern "C" {
 #endif
 
 typedef struct lua_State lua_State;   /* opaque; belongs to the provider that created it */
+/* The game exe's lua_Number is float32. -DILUA50_EXE_BUILD (the in-game hook) selects float; otherwise double (harness runtimes). ILUA50_NUMBER overrides both. */
 #ifndef ILUA50_NUMBER
-#define ILUA50_NUMBER double          /* the game VM uses float32; override per host */
+#ifdef ILUA50_EXE_BUILD
+#define ILUA50_NUMBER float
+#else
+#define ILUA50_NUMBER double
+#endif
 #endif
 typedef ILUA50_NUMBER lua_Number;
 
