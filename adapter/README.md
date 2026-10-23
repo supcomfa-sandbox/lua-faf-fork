@@ -33,9 +33,10 @@ Current set (23): `lua_open lua_close lua_newthread lua_gettop lua_settop lua_pu
 lua_settable lua_rawget lua_rawset lua_pushnumber lua_pushstring lua_pushboolean lua_pushnil lua_tonumber
 lua_tostring lua_toboolean lua_type lua_next lua_call lua_pcall lua_resume lua_setgcthreshold`.
 
-TODO: extend from the census `out/lua-upgrade/seams/faf-exe-lua-seams.csv` (base repo main checkout) once it
-exists; it did not when this was written. Adding an entry = one line in `ILUA50_FUNCS` plus the `Lua50Funcs`
-member.
+The census of every Lua entry the FAF exe calls is `seams/faf-forgedalliance.seams.json` (168 seams, schema-validated; see
+[seams/README.md](seams/README.md)). Pick the next entries from it. Adding an entry = one line in `ILUA50_FUNCS` plus the
+`Lua50Funcs` member, then set that seam's `ilua50`/`status` in the JSON and regenerate `include/ilua50_seams.h`
+(`ctrl.py re lua-seams gen-header`), which the hook uses for its detour addresses.
 
 `LuaProvider { name, ILua5_0 *api, init, shutdown, priv }`; `shutdown` releases the provider.
 
@@ -96,7 +97,7 @@ plain cdecl pointer type does not describe; the trampoline stubs in the hook, no
 - The save serializer (walks VM structures directly), so a 5.1 provider's state is invisible to it.
 - A provider other than 5.0 cannot share a `lua_State` with engine code that pokes its internals.
 
-See the census note in the research book when available (`book.py find lua-seams`).
+The seam map (every Lua entry the exe calls, FAF + Steam addresses, 5.1 break types, GPG additions the 5.1 provider must supply): [seams/README.md](seams/README.md); census note in the research book (`book.py find lua-seams`).
 
 ## Tests (offline steel thread)
 
