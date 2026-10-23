@@ -282,6 +282,10 @@ static const luaL_Reg tab_funcs[] = {
 
 LUALIB_API int luaopen_table (lua_State *L) {
   luaL_register(L, LUA_TABLIBNAME, tab_funcs);
+#if defined(LUA_SCFA_TABLEFUNCS)
+  luaopen_scfa_tablefuncs(L);
+  lua_pop(L, 1);
+#endif
   return 1;
 }
 

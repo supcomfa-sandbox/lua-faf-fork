@@ -336,6 +336,11 @@
 #define LUA_COMPAT_VARARG
 
 /*
+@@ LUA_SCFA_TABLEFUNCS adds table.getsize/empty/unpack/clone (lscfa_tablefuncs.c).
+*/
+#define LUA_SCFA_TABLEFUNCS
+
+/*
 @@ LUA_COMPAT_MOD controls compatibility with old math.mod function.
 ** CHANGE it to undefined as soon as your programs use 'math.fmod' or
 ** the new '%' operator instead of 'math.mod'.
@@ -501,8 +506,16 @@
 ** ===================================================================
 */
 
+/*
+** SCFA: build with -DLUA_NUMBER_FLOAT32 to make lua_Number a 32-bit float,
+** as in the game (the SCFA engine uses single-precision numbers).
+*/
+#if defined(LUA_NUMBER_FLOAT32)
+#define LUA_NUMBER	float
+#else
 #define LUA_NUMBER_DOUBLE
 #define LUA_NUMBER	double
+#endif
 
 /*
 @@ LUAI_UACNUMBER is the result of an 'usual argument conversion'
@@ -518,11 +531,17 @@
 @@ LUAI_MAXNUMBER2STR is maximum size of previous conversion.
 @@ lua_str2number converts a string to a number.
 */
+#if defined(LUA_NUMBER_FLOAT32)
+#define LUA_NUMBER_SCAN		"%f"
+#define LUA_NUMBER_FMT		"%.7g"
+#define lua_str2number(s,p)	((float)strtod((s), (p)))
+#else
 #define LUA_NUMBER_SCAN		"%lf"
 #define LUA_NUMBER_FMT		"%.14g"
-#define lua_number2str(s,n)	sprintf((s), LUA_NUMBER_FMT, (n))
-#define LUAI_MAXNUMBER2STR	32 /* 16 digits, sign, point, and \0 */
 #define lua_str2number(s,p)	strtod((s), (p))
+#endif
+#define lua_number2str(s,n)	sprintf((s), LUA_NUMBER_FMT, (double)(n))
+#define LUAI_MAXNUMBER2STR	32 /* 16 digits, sign, point, and \0 */
 
 
 /*

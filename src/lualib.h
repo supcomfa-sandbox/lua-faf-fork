@@ -36,6 +36,9 @@ LUALIB_API int (luaopen_math) (lua_State *L);
 #define LUA_DBLIBNAME	"debug"
 LUALIB_API int (luaopen_debug) (lua_State *L);
 
+/* SCFA extra table functions (getsize, empty, unpack, clone); see lscfa_tablefuncs.c */
+LUALIB_API int (luaopen_scfa_tablefuncs) (lua_State *L);
+
 #define LUA_LOADLIBNAME	"package"
 LUALIB_API int (luaopen_package) (lua_State *L);
 
