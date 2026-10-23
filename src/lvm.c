@@ -361,6 +361,12 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
 #define Protect(x)	{ L->savedpc = pc; {x;}; base = L->base; }
 
 
+/* SCFA bitwise operators: both operands must be numbers, no coercion and no
+   metamethods; operands are converted to unsigned 32-bit (via 64-bit so that
+   negative values wrap) and the result is converted back to a number. */
+#define tobits(n)	(cast(unsigned int, cast(long long, (n))))
+#define bit_op(sym, expr) {         TValue *rb = RKB(i);         TValue *rc = RKC(i);         if (ttisnumber(rb) && ttisnumber(rc)) {           unsigned int ub = tobits(nvalue(rb)), uc = tobits(nvalue(rc));           setnvalue(ra, cast_num(expr));         }         else           Protect(luaG_runerror(L, "`" sym "' operands must be numbers"));       }
+
 #define arith_op(op,tm) { \
         TValue *rb = RKB(i); \
         TValue *rc = RKC(i); \
@@ -489,6 +495,22 @@ void luaV_execute (lua_State *L, int nexeccalls) {
       }
       case OP_MOD: {
         arith_op(luai_nummod, TM_MOD);
+        continue;
+      }
+      case OP_BAND: {
+        bit_op("&", ub & uc);
+        continue;
+      }
+      case OP_BOR: {
+        bit_op("|", ub | uc);
+        continue;
+      }
+      case OP_BSHL: {
+        bit_op("<<", ub << (uc & 31));
+        continue;
+      }
+      case OP_BSHR: {
+        bit_op(">>", ub >> (uc & 31));
         continue;
       }
       case OP_POW: {
