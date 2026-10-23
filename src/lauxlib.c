@@ -521,6 +521,8 @@ LUALIB_API void luaL_unref (lua_State *L, int t, int ref) {
 
 typedef struct LoadF {
   int extraline;
+  int npre;  /* number of pre-read characters in `pre' (partial BOM) */
+  char pre[3];
   FILE *f;
   char buff[LUAL_BUFFERSIZE];
 } LoadF;
@@ -549,12 +551,28 @@ static int errfile (lua_State *L, const char *what, int fnameindex) {
 }
 
 
+/* SCFA: skip an optional UTF-8 BOM; returns the first character after it */
+static int skipBOM (LoadF *lf) {
+  static const char bom[] = "﻿";
+  int c, i;
+  lf->npre = 0;
+  for (i = 0; i < 3; i++) {
+    c = getc(lf->f);
+    if (c == EOF || c != (unsigned char)bom[i]) return c;
+    lf->pre[lf->npre++] = (char)c;
+  }
+  lf->npre = 0;  /* complete BOM: discard it */
+  return getc(lf->f);
+}
+
+
 LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
   LoadF lf;
   int status, readstatus;
   int c;
   int fnameindex = lua_gettop(L) + 1;  /* index of filename on the stack */
   lf.extraline = 0;
+  lf.npre = 0;
   if (filename == NULL) {
     lua_pushliteral(L, "=stdin");
     lf.f = stdin;
@@ -564,7 +582,7 @@ LUALIB_API int luaL_loadfile (lua_State *L, const char *filename) {
     lf.f = fopen(filename, "r");
     if (lf.f == NULL) return errfile(L, "open", fnameindex);
   }
-  c = getc(lf.f);
+  c = skipBOM(&lf);
   if (c == '#') {  /* Unix exec. file? */
     lf.extraline = 1;
     while ((c = getc(lf.f)) != EOF && c != '\n') ;  /* skip first line */
