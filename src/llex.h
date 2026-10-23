@@ -8,6 +8,7 @@
 #define llex_h
 
 #include "lobject.h"
+#include "scfa_keywords.h"  /* SCFA dialect port */
 #include "lzio.h"
 
 

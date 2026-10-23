@@ -31,6 +31,23 @@ Kept from 5.1: `%`, `select`, per-type metatables and the string metatable (stri
 `LUA_COMPAT_*` as configured in `luaconf.h` (implicit `arg` in `(...)` functions, no `arg` in the main chunk,
 `f\n(x)` is a syntax error), 5.1 bytecode with extra opcodes (not compatible with stock 5.1 bytecode).
 
+## Port/adapter layout (branch `port-adapter-layout`)
+
+The dialect is expressed as two ports with one adapter per core, so the Lua cores only carry small hook calls and
+X-macro lists (the 5.1 core differs from stock 5.1.5 by about 120 lines in `src/`):
+
+    lua5_0-api/keywords/scfa_keywords.h   syntax port: token/operator/opcode lists (X-macros), priorities, hook contracts
+    lua5_0-api/types/scfa_types.h         types port: number representation (-DLUA_NUMBER_FLOAT32), u32 bit ops
+    lua-5_0-adapters/{keywords,types}/    the lua-lang 5.0 changes behind the ports   (core: lua-5.0/)
+    lua-5_1-adapters/{keywords,types}/    the 5.1 work behind the same ports          (core: src/)
+
+An adapter provides `scfa_keywords_impl.h` / `scfa_types_impl.h` (same names in both adapter dirs); the build picks the
+adapter with `-I`: `build-win32.sh` (5.1) and `build-win32-50.sh` (5.0). The adapter headers are included by the core
+files that call the hooks, each with an `SCFA_IN_<FILE>` macro, so hooks can be `static`. 5.1 only: the Lua 5.0 behaviours
+kept on the 5.1 VM (`for k,v in table do`, `table.setn/getn`), the optional table functions, BOM in `luaL_loadfile`.
+5.0 only (as in lua-lang): `luaL_loadfile` replacement that skips BOM and `#` line, hex literals in the lexer,
+per-type metatables backported from 5.1 so strings get methods.
+
 ## Not ported / known gaps
 
 - `__band`, `__bor`, `__bshl`, `__bshr` metamethods (the exe names them; lua-lang does not implement them either).

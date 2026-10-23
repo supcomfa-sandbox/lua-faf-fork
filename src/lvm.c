@@ -25,6 +25,9 @@
 #include "ltable.h"
 #include "ltm.h"
 #include "lvm.h"
+#include "scfa_keywords.h"
+#define SCFA_IN_LVM
+#include "scfa_types_impl.h"  /* SCFA dialect port (types): bit operators, generic for over a table */
 
 
 
@@ -314,12 +317,6 @@ void luaV_concat (lua_State *L, int total, int last) {
 }
 
 
-int luaB_next (lua_State *L);
-
-/* SCFA: numbers to unsigned 32-bit for bitwise operators and xor */
-#define tobits(n)	(cast(unsigned int, cast(long long, (n))))
-
-
 static void Arith (lua_State *L, StkId ra, const TValue *rb,
                    const TValue *rc, TMS op) {
   TValue tempb, tempc;
@@ -333,7 +330,7 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
       case TM_MUL: setnvalue(ra, luai_nummul(nb, nc)); break;
       case TM_DIV: setnvalue(ra, luai_numdiv(nb, nc)); break;
       case TM_MOD: setnvalue(ra, luai_nummod(nb, nc)); break;
-      case TM_XOR: setnvalue(ra, cast_num(tobits(nb) ^ tobits(nc))); break;
+      case TM_XOR: setnvalue(ra, cast_num(SCFA_XOR(nb, nc))); break;
       case TM_UNM: setnvalue(ra, luai_numunm(nb)); break;
       default: lua_assert(0); break;
     }
@@ -366,20 +363,6 @@ static void Arith (lua_State *L, StkId ra, const TValue *rb,
 
 #define Protect(x)	{ L->savedpc = pc; {x;}; base = L->base; }
 
-
-/* SCFA bitwise operators: both operands must be numbers, no coercion and no
-   metamethods; operands are converted to unsigned 32-bit (via 64-bit so that
-   negative values wrap) and the result is converted back to a number. */
-#define bit_op(sym, expr) { \
-        TValue *rb = RKB(i); \
-        TValue *rc = RKC(i); \
-        if (ttisnumber(rb) && ttisnumber(rc)) { \
-          unsigned int ub = tobits(nvalue(rb)), uc = tobits(nvalue(rc)); \
-          setnvalue(ra, cast_num(expr)); \
-        } \
-        else \
-          Protect(luaG_runerror(L, "`" sym "' operands must be numbers")); \
-      }
 
 #define arith_op(op,tm) { \
         TValue *rb = RKB(i); \
@@ -511,27 +494,15 @@ void luaV_execute (lua_State *L, int nexeccalls) {
         arith_op(luai_nummod, TM_MOD);
         continue;
       }
-      case OP_BAND: {
-        bit_op("&", ub & uc);
-        continue;
-      }
-      case OP_BOR: {
-        bit_op("|", ub | uc);
-        continue;
-      }
-      case OP_BSHL: {
-        bit_op("<<", ub << (uc & 31));
-        continue;
-      }
-      case OP_BSHR: {
-        bit_op(">>", ub >> (uc & 31));
+      SCFA_OPCASES_BITS {  /* SCFA: & | << >> */
+        Protect(scfa_vm_bitop(L, GET_OPCODE(i), ra, RKB(i), RKC(i)));
         continue;
       }
       case OP_XOR: {
         TValue *rb = RKB(i);
         TValue *rc = RKC(i);
         if (ttisnumber(rb) && ttisnumber(rc)) {
-          setnvalue(ra, cast_num(tobits(nvalue(rb)) ^ tobits(nvalue(rc))));
+          setnvalue(ra, cast_num(SCFA_XOR(nvalue(rb), nvalue(rc))));
         }
         else  /* strings are coerced; otherwise the `__pow' metamethod */
           Protect(Arith(L, ra, rb, rc, TM_XOR));
@@ -722,12 +693,7 @@ void luaV_execute (lua_State *L, int nexeccalls) {
       }
       case OP_TFORLOOP: {
         StkId cb = ra + 3;  /* call base */
-        if (ttistable(ra)) {  /* Lua 5.0: `for k,v in table do' iterates with next */
-          Closure *ncl = luaF_newCclosure(L, 0, cl->env);
-          ncl->c.f = luaB_next;
-          setobjs2s(L, ra+1, ra);
-          setclvalue(L, ra, ncl);
-        }
+        scfa_tfor_prep(L, cl, ra);  /* SCFA: Lua 5.0 `for k,v in table do' */
         setobjs2s(L, cb+2, ra+2);
         setobjs2s(L, cb+1, ra+1);
         setobjs2s(L, cb, ra);

@@ -10,6 +10,7 @@
 #include "llimits.h"
 #include "lobject.h"
 #include "lzio.h"
+#include "scfa_keywords.h"  /* SCFA dialect port */
 
 
 /*
@@ -72,8 +73,7 @@ typedef struct FuncState {
   lu_byte nactvar;  /* number of active local variables */
   upvaldesc upvalues[LUAI_MAXUPVALUES];  /* upvalues */
   unsigned short actvar[LUAI_MAXVARS];  /* declared-variable stack */
-  int contwatch;  /* >= 0: first local index a `continue' would skip (repeat-until check) */
-  int conthit;  /* true if a watched local was read */
+  SCFA_FUNCSTATE_FIELDS  /* SCFA: continue / repeat-until bookkeeping */
 } FuncState;
 
 

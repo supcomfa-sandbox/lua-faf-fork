@@ -8,6 +8,7 @@
 #define lopcodes_h
 
 #include "llimits.h"
+#include "scfa_keywords.h"  /* SCFA dialect port */
 
 
 /*===========================================================================
@@ -173,10 +174,7 @@ OP_SUB,/*	A B C	R(A) := RK(B) - RK(C)				*/
 OP_MUL,/*	A B C	R(A) := RK(B) * RK(C)				*/
 OP_DIV,/*	A B C	R(A) := RK(B) / RK(C)				*/
 OP_MOD,/*	A B C	R(A) := RK(B) % RK(C)				*/
-OP_BAND,/*	A B C	R(A) := RK(B) & RK(C)  (SCFA, unsigned 32-bit)	*/
-OP_BOR,/*	A B C	R(A) := RK(B) | RK(C)				*/
-OP_BSHL,/*	A B C	R(A) := RK(B) << RK(C)				*/
-OP_BSHR,/*	A B C	R(A) := RK(B) >> RK(C)				*/
+SCFA_OP_BITS	/* A B C	R(A) := RK(B) & | << >> RK(C)  (SCFA, unsigned 32-bit) */
 OP_XOR,/*	A B C	R(A) := RK(B) ^ RK(C)  (SCFA xor; replaces pow)	*/
 OP_UNM,/*	A B	R(A) := -R(B)					*/
 OP_NOT,/*	A B	R(A) := not R(B)				*/

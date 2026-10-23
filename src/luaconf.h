@@ -336,11 +336,6 @@
 #define LUA_COMPAT_VARARG
 
 /*
-@@ LUA_SCFA_TABLEFUNCS adds table.getsize/empty/unpack/clone (lscfa_tablefuncs.c).
-*/
-#define LUA_SCFA_TABLEFUNCS
-
-/*
 @@ LUA_COMPAT_MOD controls compatibility with old math.mod function.
 ** CHANGE it to undefined as soon as your programs use 'math.fmod' or
 ** the new '%' operator instead of 'math.mod'.
@@ -510,8 +505,9 @@
 ** SCFA: build with -DLUA_NUMBER_FLOAT32 to make lua_Number a 32-bit float,
 ** as in the game (the SCFA engine uses single-precision numbers).
 */
+#include "scfa_types.h"  /* SCFA dialect port (types): number representation */
 #if defined(LUA_NUMBER_FLOAT32)
-#define LUA_NUMBER	float
+#define LUA_NUMBER	SCFA_NUMBER_TYPE
 #else
 #define LUA_NUMBER_DOUBLE
 #define LUA_NUMBER	double
@@ -532,9 +528,9 @@
 @@ lua_str2number converts a string to a number.
 */
 #if defined(LUA_NUMBER_FLOAT32)
-#define LUA_NUMBER_SCAN		"%f"
-#define LUA_NUMBER_FMT		"%.7g"
-#define lua_str2number(s,p)	((float)strtod((s), (p)))
+#define LUA_NUMBER_SCAN		SCFA_NUMBER_SCAN
+#define LUA_NUMBER_FMT		SCFA_NUMBER_FMT
+#define lua_str2number(s,p)	SCFA_STR2NUMBER(s, p)
 #else
 #define LUA_NUMBER_SCAN		"%lf"
 #define LUA_NUMBER_FMT		"%.14g"

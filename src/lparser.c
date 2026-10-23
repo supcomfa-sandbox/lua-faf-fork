@@ -40,8 +40,7 @@
 typedef struct BlockCnt {
   struct BlockCnt *previous;  /* chain */
   int breaklist;  /* list of jumps out of this loop */
-  int contlist;  /* list of `continue' jumps (to the loop's next-iteration point) */
-  int contnact;  /* fewest active locals at any `continue' of this loop */
+  SCFA_BLOCK_FIELDS  /* SCFA: continue jump list, ... */
   lu_byte nactvar;  /* # active locals outside the breakable structure */
   lu_byte upval;  /* true if some variable in the block is an upvalue */
   lu_byte isbreakable;  /* true if `block' is a loop */
@@ -210,7 +209,7 @@ static int searchvar (FuncState *fs, TString *n) {
   int i;
   for (i=fs->nactvar-1; i >= 0; i--) {
     if (n == getlocvar(fs, i).varname) {
-      if (fs->contwatch >= 0 && i >= fs->contwatch) fs->conthit = 1;
+      SCFA_NOTE_LOCAL_READ(fs, i);
       return i;
     }
   }
@@ -277,6 +276,11 @@ static void adjust_assign (LexState *ls, int nvars, int nexps, expdesc *e) {
 }
 
 
+/* SCFA dialect port (keywords): parser hooks (continue, bit operators, constructor hints) */
+#define SCFA_IN_LPARSER
+#include "scfa_keywords_impl.h"
+
+
 static void enterlevel (LexState *ls) {
   if (++ls->L->nCcalls > LUAI_MAXCCALLS)
 	luaX_lexerror(ls, "chunk has too many syntax levels", 0);
@@ -288,8 +292,7 @@ static void enterlevel (LexState *ls) {
 
 static void enterblock (FuncState *fs, BlockCnt *bl, lu_byte isbreakable) {
   bl->breaklist = NO_JUMP;
-  bl->contlist = NO_JUMP;
-  bl->contnact = 255;
+  scfa_block_init(bl);
   bl->isbreakable = isbreakable;
   bl->nactvar = fs->nactvar;
   bl->upval = 0;
@@ -347,8 +350,7 @@ static void open_func (LexState *ls, FuncState *fs) {
   fs->np = 0;
   fs->nlocvars = 0;
   fs->nactvar = 0;
-  fs->contwatch = -1;
-  fs->conthit = 0;
+  SCFA_FUNCSTATE_INIT(fs);
   fs->bl = NULL;
   f->source = ls->source;
   f->maxstacksize = 2;  /* registers 0/1 are always valid */
@@ -509,26 +511,14 @@ static void constructor (LexState *ls, expdesc *t) {
   int line = ls->linenumber;
   int pc = luaK_codeABC(fs, OP_NEWTABLE, 0, 0, 0);
   struct ConsControl cc;
-  int hint[2] = {0, 0};  /* hash and array size hints */
-  int nhint = 0;
+  int hint[2];  /* SCFA: hash and array size hints */
   cc.na = cc.nh = cc.tostore = 0;
   cc.t = t;
   init_exp(t, VRELOCABLE, pc);
   init_exp(&cc.v, VVOID, 0);  /* no value (yet) */
   luaK_exp2nextreg(ls->fs, t);  /* fix it at stack top (for gc) */
   checknext(ls, '{');
-  /* SCFA (LuaPlus) size hints: `{&hash &array ...}'; no visible effect */
-  while (ls->t.token == '&') {
-    luaX_next(ls);
-    if (ls->t.token != TK_NUMBER)
-      luaX_syntaxerror(ls, "table size hint (number) expected after `&'");
-    if (nhint < 2) {  /* clamp: hints are only a performance hint */
-      lua_Number r = ls->t.seminfo.r;
-      hint[nhint++] = (r > 0 && r < (1 << 20)) ? cast_int(r) : 0;
-    }
-    luaX_next(ls);
-  }
-  if (nhint > 0 && !testnext(ls, ',')) testnext(ls, ';');
+  scfa_constructor_hints(ls, hint);  /* SCFA: `{&hash &array ...}' */
   do {
     lua_assert(cc.v.k == VVOID || cc.tostore > 0);
     if (ls->t.token == '}') break;
@@ -554,8 +544,7 @@ static void constructor (LexState *ls, expdesc *t) {
   } while (testnext(ls, ',') || testnext(ls, ';'));
   check_match(ls, '}', '{', line);
   lastlistfield(fs, &cc);
-  if (hint[0] > cc.nh) cc.nh = hint[0];
-  if (hint[1] > cc.na) cc.na = hint[1];
+  scfa_constructor_sizes(&cc.nh, &cc.na, hint);
   SETARG_B(fs->f->code[pc], luaO_int2fb(cc.na)); /* set initial array size */
   SETARG_C(fs->f->code[pc], luaO_int2fb(cc.nh));  /* set initial table size */
 }
@@ -817,10 +806,6 @@ static BinOpr getbinopr (int op) {
     case '/': return OPR_DIV;
     case '%': return OPR_MOD;
     case '^': return OPR_XOR;
-    case '&': return OPR_BAND;
-    case '|': return OPR_BOR;
-    case TK_BSHL: return OPR_BSHL;
-    case TK_BSHR: return OPR_BSHR;
     case TK_CONCAT: return OPR_CONCAT;
     case TK_NE: return OPR_NE;
     case TK_EQ: return OPR_EQ;
@@ -830,7 +815,7 @@ static BinOpr getbinopr (int op) {
     case TK_GE: return OPR_GE;
     case TK_AND: return OPR_AND;
     case TK_OR: return OPR_OR;
-    default: return OPR_NOBINOPR;
+    default: return scfa_getbinopr(op);  /* SCFA: & | << >> */
   }
 }
 
@@ -840,8 +825,8 @@ static const struct {
   lu_byte right; /* right priority */
 } priority[] = {  /* ORDER OPR */
    {6, 6}, {6, 6}, {7, 7}, {7, 7}, {7, 7},  /* `+' `-' `/' `%' */
-   {8, 8}, {8, 8}, {8, 8}, {8, 8},  /* `&' `|' `<<' `>>' (SCFA: bind tighter than `*') */
-   {10, 9}, {5, 4},                 /* xor and concat (right associative) */
+   SCFA_PRIORITY_BITS               /* SCFA: `&' `|' `<<' `>>' bind tighter than `*' */
+   {SCFA_XOR_LEFT, SCFA_XOR_RIGHT}, {5, 4},  /* xor and concat (right associative) */
    {3, 3}, {3, 3},                  /* equality and inequality */
    {3, 3}, {3, 3}, {3, 3}, {3, 3},  /* order */
    {2, 2}, {1, 1}                   /* logical (and/or) */
@@ -1017,24 +1002,6 @@ static void breakstat (LexState *ls) {
 }
 
 
-static void continuestat (LexState *ls) {
-  /* stat -> CONTINUE */
-  FuncState *fs = ls->fs;
-  BlockCnt *bl = fs->bl;
-  int upval = 0;
-  while (bl && !bl->isbreakable) {
-    upval |= bl->upval;
-    bl = bl->previous;
-  }
-  if (!bl)
-    luaX_syntaxerror(ls, "no loop to continue");
-  if (upval)
-    luaK_codeABC(fs, OP_CLOSE, bl->nactvar, 0, 0);
-  if (fs->nactvar < bl->contnact) bl->contnact = fs->nactvar;
-  luaK_concat(fs, &bl->contlist, luaK_jump(fs));
-}
-
-
 static void whilestat (LexState *ls, int line) {
   /* whilestat -> WHILE cond DO block END */
   FuncState *fs = ls->fs;
@@ -1047,7 +1014,7 @@ static void whilestat (LexState *ls, int line) {
   enterblock(fs, &bl, 1);
   checknext(ls, TK_DO);
   block(ls);
-  luaK_patchtohere(fs, bl.contlist);  /* `continue' re-tests the condition */
+  scfa_loop_continue_here(fs, &bl);  /* SCFA: `continue' re-tests the condition */
   luaK_patchlist(fs, luaK_jump(fs), whileinit);
   check_match(ls, TK_END, TK_WHILE, line);
   leaveblock(fs);
@@ -1066,20 +1033,9 @@ static void repeatstat (LexState *ls, int line) {
   luaX_next(ls);  /* skip REPEAT */
   chunk(ls);
   check_match(ls, TK_UNTIL, TK_REPEAT, line);
-  luaK_patchtohere(fs, bl1.contlist);  /* `continue' goes to the condition */
-  if (bl1.contlist != NO_JUMP && bl1.contnact < fs->nactvar) {
-    /* locals declared after some `continue' are uninitialised on that path:
-       they may exist but the condition must not read them */
-    fs->contwatch = bl1.contnact;
-    fs->conthit = 0;
-  }
+  scfa_repeat_cond_begin(fs, &bl1);  /* SCFA: `continue' goes to the condition */
   condexit = cond(ls);  /* read condition (inside scope block) */
-  if (fs->contwatch >= 0) {
-    int hit = fs->conthit;
-    fs->contwatch = -1;
-    if (hit)
-      luaX_syntaxerror(ls, "`continue' jumps into the scope of a local used by the condition");
-  }
+  scfa_repeat_cond_end(ls);
   if (!bl2.upval) {  /* no upvalues? */
     leaveblock(fs);  /* finish scope */
     luaK_patchlist(ls->fs, condexit, repeat_init);  /* close the loop */
@@ -1117,7 +1073,7 @@ static void forbody (LexState *ls, int base, int line, int nvars, int isnum) {
   luaK_reserveregs(fs, nvars);
   block(ls);
   leaveblock(fs);  /* end of scope for declared variables */
-  luaK_patchtohere(fs, fs->bl->contlist);  /* `continue' goes to the loop step */
+  scfa_loop_continue_here(fs, fs->bl);  /* SCFA: `continue' goes to the loop step */
   luaK_patchtohere(fs, prep);
   endfor = (isnum) ? luaK_codeAsBx(fs, OP_FORLOOP, base, NO_JUMP) :
                      luaK_codeABC(fs, OP_TFORLOOP, base, 0, nvars);
@@ -1371,17 +1327,13 @@ static int statement (LexState *ls) {
       retstat(ls);
       return 1;  /* must be last statement */
     }
-    case TK_CONTINUE: {  /* stat -> continuestat */
-      luaX_next(ls);  /* skip CONTINUE */
-      continuestat(ls);
-      return 1;  /* must be last statement */
-    }
     case TK_BREAK: {  /* stat -> breakstat */
       luaX_next(ls);  /* skip BREAK */
       breakstat(ls);
       return 1;  /* must be last statement */
     }
     default: {
+      if (scfa_statement(ls)) return 1;  /* SCFA: continue (must be last statement) */
       exprstat(ls);
       return 0;  /* to avoid warnings */
     }
