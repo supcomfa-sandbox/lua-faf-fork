@@ -314,6 +314,8 @@ void luaV_concat (lua_State *L, int total, int last) {
 }
 
 
+int luaB_next (lua_State *L);
+
 /* SCFA: numbers to unsigned 32-bit for bitwise operators and xor */
 #define tobits(n)	(cast(unsigned int, cast(long long, (n))))
 
@@ -720,6 +722,12 @@ void luaV_execute (lua_State *L, int nexeccalls) {
       }
       case OP_TFORLOOP: {
         StkId cb = ra + 3;  /* call base */
+        if (ttistable(ra)) {  /* Lua 5.0: `for k,v in table do' iterates with next */
+          Closure *ncl = luaF_newCclosure(L, 0, cl->env);
+          ncl->c.f = luaB_next;
+          setobjs2s(L, ra+1, ra);
+          setclvalue(L, ra, ncl);
+        }
         setobjs2s(L, cb+2, ra+2);
         setobjs2s(L, cb+1, ra+1);
         setobjs2s(L, cb, ra);

@@ -23,6 +23,8 @@ License: MIT, see `COPYRIGHT` (Lua, Tecgraf PUC-Rio). The dialect ideas come fro
 | `string.lualex` | GPG (stub) | Registered, returns 1, like lua-lang |
 | Table constructor size hints `{&hash &array ...}` | LuaPlus | Parsed (optional `,`/`;` after the hints) and used as NEWTABLE size hints; no visible effect |
 | `table.getsize`, `table.empty`, `table.unpack(t,i,j)`, `table.clone` | FA executable | `src/lscfa_tablefuncs.c`, on by `LUA_SCFA_TABLEFUNCS` (luaconf.h). `clone` is deep and cycle-safe, metatables shared |
+| `for k,v in table do` | Lua 5.0 / game scripts | A table in place of the iterator function iterates with `next` (OP_TFORLOOP) |
+| `table.setn` / `table.getn` | Lua 5.0 | `setn(t,n)` stores field `n`; `getn` returns a numeric `n` field, else the 5.1 border. (insert/remove/sort keep 5.1 behaviour) |
 | `LUA_NUMBER_FLOAT32` | the game uses single-precision numbers | `-DLUA_NUMBER_FLOAT32`: `lua_Number` is `float`, printed with `%.7g` |
 
 Kept from 5.1: `%`, `select`, per-type metatables and the string metatable (strings have methods),

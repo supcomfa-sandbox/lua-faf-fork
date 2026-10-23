@@ -98,6 +98,15 @@ eq("table.unpack default", "local a, b, c = table.unpack({7, 8, 9}) return a + b
 eq("table.clone deep", "local t = {a = {b = 1}} local c = table.clone(t) c.a.b = 2 return t.a.b * 10 + c.a.b", 12)
 eq("table.clone cycle-safe", "local t = {} t.self = t local c = table.clone(t) return c.self == c and c ~= t", true)
 
+-- Lua 5.0 behaviours the game relies on, kept on the 5.1 VM
+eq("for k,v in table do (5.0 style, no pairs)", "local t = {a = 1, b = 2} local n = 0 for k, v in t do n = n + v end return n", 3)
+eq("for in table: array part", "local s = 0 for i, v in {5, 6, 7} do s = s + i * v end return s", 5 + 12 + 21)
+eq("for in function iterator still works", "local s = 0 for i, v in ipairs({5, 6}) do s = s + v end return s", 11)
+eq("table.setn sets the count seen by getn", "local t = {1, 2, 3} table.setn(t, 10) return table.getn(t)", 10)
+eq("table.getn without n is the border", "return table.getn({1, 2, 3})", 3)
+eq("math.mod is fmod", "return math.mod(-7, 3)", -1)
+eq("string.gfind exists", "local n = 0 for w in string.gfind('a b c', '%a') do n = n + 1 end return n", 3)
+
 -- table preallocation hints {&hash &array} (LuaPlus): parsed, no visible effect
 eq("prealloc hints both", "local t = {&1 &8} return type(t)", "table")
 eq("prealloc hints empty", "local t = {&1 &8} return next(t) == nil", true)
