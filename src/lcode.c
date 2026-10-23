@@ -641,7 +641,7 @@ static int constfolding (OpCode op, expdesc *e1, expdesc *e2) {
       r = luai_nummod(v1, v2); break;
     case OP_BAND: case OP_BOR: case OP_BSHL: case OP_BSHR:
       return 0;  /* no constant folding for bitwise operators */
-    case OP_POW: r = luai_numpow(v1, v2); break;
+    case OP_XOR: return 0;  /* no constant folding for xor */
     case OP_UNM: r = luai_numunm(v1); break;
     case OP_LEN: return 0;  /* no constant folding for 'len' */
     default: lua_assert(0); r = 0; break;
@@ -725,7 +725,7 @@ void luaK_infix (FuncState *fs, BinOpr op, expdesc *v) {
     }
     case OPR_ADD: case OPR_SUB: case OPR_MUL: case OPR_DIV:
     case OPR_MOD: case OPR_BAND: case OPR_BOR: case OPR_BSHL: case OPR_BSHR:
-    case OPR_POW: {
+    case OPR_XOR: {
       if (!isnumeral(v)) luaK_exp2RK(fs, v);
       break;
     }
@@ -776,7 +776,7 @@ void luaK_posfix (FuncState *fs, BinOpr op, expdesc *e1, expdesc *e2) {
     case OPR_BOR: codearith(fs, OP_BOR, e1, e2); break;
     case OPR_BSHL: codearith(fs, OP_BSHL, e1, e2); break;
     case OPR_BSHR: codearith(fs, OP_BSHR, e1, e2); break;
-    case OPR_POW: codearith(fs, OP_POW, e1, e2); break;
+    case OPR_XOR: codearith(fs, OP_XOR, e1, e2); break;
     case OPR_EQ: codecomp(fs, OP_EQ, 1, e1, e2); break;
     case OPR_NE: codecomp(fs, OP_EQ, 0, e1, e2); break;
     case OPR_LT: codecomp(fs, OP_LT, 1, e1, e2); break;

@@ -35,7 +35,7 @@ const char *const luaP_opnames[NUM_OPCODES+1] = {
   "BOR",
   "BSHL",
   "BSHR",
-  "POW",
+  "XOR",
   "UNM",
   "NOT",
   "LEN",
@@ -85,7 +85,7 @@ const lu_byte luaP_opmodes[NUM_OPCODES] = {
  ,opmode(0, 1, OpArgK, OpArgK, iABC)		/* OP_BOR */
  ,opmode(0, 1, OpArgK, OpArgK, iABC)		/* OP_BSHL */
  ,opmode(0, 1, OpArgK, OpArgK, iABC)		/* OP_BSHR */
- ,opmode(0, 1, OpArgK, OpArgK, iABC)		/* OP_POW */
+ ,opmode(0, 1, OpArgK, OpArgK, iABC)		/* OP_XOR */
  ,opmode(0, 1, OpArgR, OpArgN, iABC)		/* OP_UNM */
  ,opmode(0, 1, OpArgR, OpArgN, iABC)		/* OP_NOT */
  ,opmode(0, 1, OpArgR, OpArgN, iABC)		/* OP_LEN */
