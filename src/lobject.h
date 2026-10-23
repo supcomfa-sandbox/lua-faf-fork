@@ -15,6 +15,10 @@
 #include "llimits.h"
 #include "lua.h"
 
+#define SCFA_IN_LOBJECT_H
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi) */
+#undef SCFA_IN_LOBJECT_H
+
 
 /* tags for values visible from Lua */
 #define LAST_TAG	LUA_TTHREAD
@@ -219,6 +223,7 @@ typedef union Udata {
     struct Table *metatable;
     struct Table *env;
     size_t len;
+    SCFA_UDATA_FIELDS  /* SCFA: C++ type slot */
   } uv;
 } Udata;
 

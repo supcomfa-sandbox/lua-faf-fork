@@ -13,6 +13,9 @@
 #include "ltm.h"
 #include "lzio.h"
 
+#define SCFA_IN_LSTATE_H
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi) */
+
 
 
 struct lua_longjmp;  /* defined in ldo.c */
@@ -91,6 +94,7 @@ typedef struct global_State {
   UpVal uvhead;  /* head of double-linked list of all open upvalues */
   struct Table *mt[NUM_TAGS];  /* metatables for basic types */
   TString *tmname[TM_N];  /* array with tag-method names */
+  SCFA_GLOBAL_FIELDS  /* SCFA: global user pointer, GC hook, default metatables */
 } global_State;
 
 
@@ -124,6 +128,7 @@ struct lua_State {
   GCObject *gclist;
   struct lua_longjmp *errorJmp;  /* current error recover point */
   ptrdiff_t errfunc;  /* current error handling function (stack index) */
+  SCFA_STATE_FIELDS  /* SCFA: per-state user pointer */
 };
 
 

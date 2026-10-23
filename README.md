@@ -48,11 +48,36 @@ kept on the 5.1 VM (`for k,v in table do`, `table.setn/getn`), the optional tabl
 5.0 only (as in lua-lang): `luaL_loadfile` replacement that skips BOM and `#` line, hex literals in the lexer,
 per-type metatables backported from 5.1 so strings get methods.
 
+## GPG C API additions (port `gpgapi`, `lua5_0-api/gpgapi/scfa_gpgapi.h`, 5.1 adapter `lua-5_1-adapters/gpgapi/`)
+
+The engine and FAF's patches call C API functions GPG added to Lua 5.0.1; a 5.1 provider has to supply them
+(census: `adapter/seams/README.md` "GPG additions"). Behaviour taken from the exe's disassembly (addresses in the header).
+
+| function | notes |
+|---|---|
+| `lua_setglobaluserdata` / `lua_getglobaluserdata` | one pointer per global state (`global_State`), shared by all threads, initially NULL |
+| `lua_setstateuserdata` / `lua_getstateuserdata` | one pointer per `lua_State`; NOT inherited by `lua_newthread` / coroutines (the exe zeroes it) |
+| `lua_setusergcfunction` | `void (*)(lua_State *)` called by the collector after each thread is traversed (mark phase, incl. the main thread); `lua_markvalue(L, idx)` marks a value from inside it |
+| `lua_setdefaultmetatable(L, gpgtype)` | pops; if a table it becomes the default metatable of the engine type number (`SCFA_GPG_T*`): tables and userdata created later start with it, other types use it as their per-type metatable |
+| `lua_newuserdatat(L, size, rtype)`, `lua_getuserdatatype`, `lua_touserdata_rref(RRef*, L, idx)` | userdata type slot (exe `Udata+0xc`, an opaque `RType*`); `lua_touserdata_rref` is the engine's `lua_touserdata` signature (`{data, type}` through a hidden pointer); the stock `lua_touserdata` is unchanged |
+| `lua_gpgtype(L, idx)` | engine type numbers (6 C function, 7 Lua function, 8 userdata, 9 thread) |
+
+Tests: `scfa-test/gpgapi/run.sh` (C core, C++ core, C++ error test).
+
+### C++ build: Lua errors as C++ exceptions
+
+The exe's VM throws C++ exceptions (`__CxxThrowException`) instead of `longjmp`. Compile the 5.1 core as C++ with
+`-DSCFA_CPP_ERRORS` (`g++ -x c++ -DSCFA_CPP_ERRORS`): protected calls (`lua_pcall`, coroutines) use the stock 5.1
+C++ `try`/`catch` (`LUAI_THROW`/`LUAI_TRY` in `luaconf.h`, so destructors of C++ frames between the error and the
+handler run), and an error with no protected call active throws `scfa_LuaError {lua_State *L; int status;}` (stack reset,
+error object on top) instead of calling the panic function. Link with `-static` (libstdc++).
+
 ## Not ported / known gaps
 
 - `__band`, `__bor`, `__bshl`, `__bshr` metamethods (the exe names them; lua-lang does not implement them either).
 - GPG removed `__gc` for tables (5.1 keeps it for userdata only, as stock 5.1).
-- Engine behaviour (C++ exceptions instead of longjmp, LuaPlus object API) is out of scope.
+- Engine behaviour: C++ exceptions are the `-DSCFA_CPP_ERRORS` build above; the LuaPlus object layer is `adapter/luaplus51/` (first pieces).
+- GPG API differences: user/GC-hook pointers are not at the exe's `G+0x148/0x14c`, `L+0x44` offsets (only reachable through the accessors); the default metatables of tables/userdata start NULL (the exe creates an empty table per type at `lua_open`); the exe's default metatable for non-table types is used as the handler of every event, here it is a normal 5.1 per-type metatable; the GC hook gets the traversed `lua_State`, not the exe's `GCState`; RType finalization (`*(rtype+0x5c)` on collection) is not implemented (use `__gc`).
 - `proto`/`upval` type names exist as in stock 5.1.
 
 ## Build (32-bit, Windows, msys2 mingw32)

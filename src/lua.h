@@ -385,4 +385,6 @@ struct lua_Debug {
 ******************************************************************************/
 
 
+#include "scfa_gpgapi.h"  /* SCFA dialect port (gpgapi): the C API GPG added to Lua 5.0.1 */
+
 #endif

@@ -17,6 +17,9 @@
 #include "lstate.h"
 #include "lstring.h"
 
+#define SCFA_IN_LSTRING_C
+#include "scfa_gpgapi_impl.h"  /* SCFA dialect port (gpgapi) */
+
 
 
 void luaS_resize (lua_State *L, int newsize) {
@@ -101,7 +104,7 @@ Udata *luaS_newudata (lua_State *L, size_t s, Table *e) {
   u->uv.marked = luaC_white(G(L));  /* is not finalized */
   u->uv.tt = LUA_TUSERDATA;
   u->uv.len = s;
-  u->uv.metatable = NULL;
+  SCFA_UDATA_INIT(L, u);  /* SCFA: type slot, default metatable */
   u->uv.env = e;
   /* chain it on udata list (after main thread) */
   u->uv.next = G(L)->mainthread->next;
