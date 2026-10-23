@@ -1,3 +1,8 @@
+> **Moved.** The adapter (ILua5_0, middleware, lua50 passthrough, lua51 provider, seams JSON, tests) now lives in the base repo under
+> `lua-upgrade/adapter` (https://github.com/supcomfa-sandbox/supreme-commander-forged-alliance, branch `issue-26-lua-ai-optimizations/207-lua-full-provider`;
+> hook source in `lua-upgrade/hook`). This fork keeps only the Lua VM (5.0/5.1 dialect cores, port-adapter layout, GPG C API additions).
+> Do not add to this `adapter/` directory; it is kept only until the base repo copy is merged (copied from `adapter/slice3` @ 5934b63).
+
 # adapter: ILua5_0 + provider map (story #207, epic #26)
 
 An adapter between the SupCom/FAF exe and its Lua scripts. It exposes the Lua 5.0 API the engine
