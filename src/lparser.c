@@ -40,6 +40,8 @@
 typedef struct BlockCnt {
   struct BlockCnt *previous;  /* chain */
   int breaklist;  /* list of jumps out of this loop */
+  int contlist;  /* list of `continue' jumps (to the loop's next-iteration point) */
+  int contnact;  /* fewest active locals at any `continue' of this loop */
   lu_byte nactvar;  /* # active locals outside the breakable structure */
   lu_byte upval;  /* true if some variable in the block is an upvalue */
   lu_byte isbreakable;  /* true if `block' is a loop */
@@ -207,8 +209,10 @@ static int indexupvalue (FuncState *fs, TString *name, expdesc *v) {
 static int searchvar (FuncState *fs, TString *n) {
   int i;
   for (i=fs->nactvar-1; i >= 0; i--) {
-    if (n == getlocvar(fs, i).varname)
+    if (n == getlocvar(fs, i).varname) {
+      if (fs->contwatch >= 0 && i >= fs->contwatch) fs->conthit = 1;
       return i;
+    }
   }
   return -1;  /* not found */
 }
@@ -284,6 +288,8 @@ static void enterlevel (LexState *ls) {
 
 static void enterblock (FuncState *fs, BlockCnt *bl, lu_byte isbreakable) {
   bl->breaklist = NO_JUMP;
+  bl->contlist = NO_JUMP;
+  bl->contnact = 255;
   bl->isbreakable = isbreakable;
   bl->nactvar = fs->nactvar;
   bl->upval = 0;
@@ -341,6 +347,8 @@ static void open_func (LexState *ls, FuncState *fs) {
   fs->np = 0;
   fs->nlocvars = 0;
   fs->nactvar = 0;
+  fs->contwatch = -1;
+  fs->conthit = 0;
   fs->bl = NULL;
   f->source = ls->source;
   f->maxstacksize = 2;  /* registers 0/1 are always valid */
@@ -988,6 +996,24 @@ static void breakstat (LexState *ls) {
 }
 
 
+static void continuestat (LexState *ls) {
+  /* stat -> CONTINUE */
+  FuncState *fs = ls->fs;
+  BlockCnt *bl = fs->bl;
+  int upval = 0;
+  while (bl && !bl->isbreakable) {
+    upval |= bl->upval;
+    bl = bl->previous;
+  }
+  if (!bl)
+    luaX_syntaxerror(ls, "no loop to continue");
+  if (upval)
+    luaK_codeABC(fs, OP_CLOSE, bl->nactvar, 0, 0);
+  if (fs->nactvar < bl->contnact) bl->contnact = fs->nactvar;
+  luaK_concat(fs, &bl->contlist, luaK_jump(fs));
+}
+
+
 static void whilestat (LexState *ls, int line) {
   /* whilestat -> WHILE cond DO block END */
   FuncState *fs = ls->fs;
@@ -1000,6 +1026,7 @@ static void whilestat (LexState *ls, int line) {
   enterblock(fs, &bl, 1);
   checknext(ls, TK_DO);
   block(ls);
+  luaK_patchtohere(fs, bl.contlist);  /* `continue' re-tests the condition */
   luaK_patchlist(fs, luaK_jump(fs), whileinit);
   check_match(ls, TK_END, TK_WHILE, line);
   leaveblock(fs);
@@ -1018,7 +1045,20 @@ static void repeatstat (LexState *ls, int line) {
   luaX_next(ls);  /* skip REPEAT */
   chunk(ls);
   check_match(ls, TK_UNTIL, TK_REPEAT, line);
+  luaK_patchtohere(fs, bl1.contlist);  /* `continue' goes to the condition */
+  if (bl1.contlist != NO_JUMP && bl1.contnact < fs->nactvar) {
+    /* locals declared after some `continue' are uninitialised on that path:
+       they may exist but the condition must not read them */
+    fs->contwatch = bl1.contnact;
+    fs->conthit = 0;
+  }
   condexit = cond(ls);  /* read condition (inside scope block) */
+  if (fs->contwatch >= 0) {
+    int hit = fs->conthit;
+    fs->contwatch = -1;
+    if (hit)
+      luaX_syntaxerror(ls, "`continue' jumps into the scope of a local used by the condition");
+  }
   if (!bl2.upval) {  /* no upvalues? */
     leaveblock(fs);  /* finish scope */
     luaK_patchlist(ls->fs, condexit, repeat_init);  /* close the loop */
@@ -1056,6 +1096,7 @@ static void forbody (LexState *ls, int base, int line, int nvars, int isnum) {
   luaK_reserveregs(fs, nvars);
   block(ls);
   leaveblock(fs);  /* end of scope for declared variables */
+  luaK_patchtohere(fs, fs->bl->contlist);  /* `continue' goes to the loop step */
   luaK_patchtohere(fs, prep);
   endfor = (isnum) ? luaK_codeAsBx(fs, OP_FORLOOP, base, NO_JUMP) :
                      luaK_codeABC(fs, OP_TFORLOOP, base, 0, nvars);
@@ -1307,6 +1348,11 @@ static int statement (LexState *ls) {
     }
     case TK_RETURN: {  /* stat -> retstat */
       retstat(ls);
+      return 1;  /* must be last statement */
+    }
+    case TK_CONTINUE: {  /* stat -> continuestat */
+      luaX_next(ls);  /* skip CONTINUE */
+      continuestat(ls);
       return 1;  /* must be last statement */
     }
     case TK_BREAK: {  /* stat -> breakstat */

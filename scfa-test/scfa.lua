@@ -69,6 +69,8 @@ eq("continue closes upvalues",
 eq("continue closes upvalues while",
   "local fs, i = {}, 0 while i < 3 do i = i + 1 local x = i fs[i] = function() return x end if i == 1 then continue end end return fs[1]() * 100 + fs[2]() * 10 + fs[3]()", 123)
 eq("continue in if inside while keeps going", "local i, hits = 0, 0 while i < 4 do i = i + 1 if i < 3 then continue end hits = hits + 1 end return hits", 2)
+eq("continue repeat, later local not used by cond is fine", "local n, s = 0, 0 repeat n = n + 1 if n == 1 then continue end local y = n s = s + y until n >= 3 return s", 5)
+eq("continue repeat with upvalue in body", "local fs, n = {}, 0 repeat n = n + 1 local x = n fs[n] = function() return x end if n == 2 then continue end until n >= 3 return fs[1]() + fs[2]() * 10 + fs[3]() * 100", 321)
 bad("continue outside loop", "continue", "no loop to continue")
 eq("continue is reserved", "return pcall(loadstring, 'local continue = 1') and loadstring('local continue = 1') == nil", true)
 
