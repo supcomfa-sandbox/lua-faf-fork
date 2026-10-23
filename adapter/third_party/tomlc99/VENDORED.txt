@@ -1,0 +1,2 @@
+tomlc99 (https://github.com/cktan/tomlc99), upstream commit 29076dfd095bbbbd50a3c1b2760d29f4b83e74ac, MIT licence (see LICENSE).
+Local patch (marked 'SUPCOM PATCH' in toml.c/toml.h): creation sequence numbers + toml_ordered_key(), because tomlc99 stores values, arrays and tables in three separate arrays and otherwise loses the file order across kinds. Everything else is unmodified.

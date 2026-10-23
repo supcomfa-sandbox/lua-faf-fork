@@ -1,0 +1,8 @@
+# Per-seam override: only lua_open (state creation) goes to lua51; states then follow their owner.
+[providers]
+lua50 = { impl = "lua50_passthrough" }
+lua51 = { impl = "lua51", runtime = "51float" }
+[default]
+provider = "lua50"
+[api]
+lua_open = "lua51"
