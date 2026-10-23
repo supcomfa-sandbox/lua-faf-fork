@@ -340,6 +340,12 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         inclinenumber(ls);
         continue;
       }
+      case '#': {
+        /* SCFA: `#' starts a short comment (the length operator is not available) */
+        while (!currIsNewline(ls) && ls->current != EOZ)
+          next(ls);
+        continue;
+      }
       case '-': {
         next(ls);
         if (ls->current != '-') return '-';
@@ -383,9 +389,11 @@ static int llex (LexState *ls, SemInfo *seminfo) {
         if (ls->current != '=') return '>';
         else { next(ls); return TK_GE; }
       }
-      case '~': {
+      case '~':
+      case '!': {  /* SCFA: `!=' is a synonym of `~=' */
+        int tok = ls->current;
         next(ls);
-        if (ls->current != '=') return '~';
+        if (ls->current != '=') return tok;
         else { next(ls); return TK_NE; }
       }
       case '"':
