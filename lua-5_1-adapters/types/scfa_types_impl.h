@@ -45,11 +45,39 @@ static int scfa_next (lua_State *L) {
 }
 
 
+/* The one scfa_next closure of a state (registry[lightuserdata &scfa_next_key]), shared by every `for k,v in table do' loop. One object, so a persistence
+   library can name it as a permanent (scfa_pushnext): a coroutine suspended inside such a loop holds it on its stack. A fresh closure per loop could not be
+   named (lua-faf-fork #213: "C function ... (0 upvalues) is not in the permanents table" saving a game). */
+static int scfa_next_key;
+static Closure *scfa_shared_next (lua_State *L, Table *env) {
+  Table *reg = hvalue(registry(L));
+  TValue k;
+  const TValue *v;
+  setpvalue(&k, &scfa_next_key);
+  v = luaH_get(reg, &k);
+  if (ttisfunction(v)) return clvalue(v);
+  {
+    Closure *ncl = luaF_newCclosure(L, 0, env);
+    TValue *slot;
+    ncl->c.f = scfa_next;
+    slot = luaH_set(L, reg, &k);
+    setclvalue(L, slot, ncl);
+    luaC_barriert(L, reg, slot);
+    return ncl;
+  }
+}
+
+LUA_API void scfa_pushnext (lua_State *L) {
+  lua_lock(L);
+  setclvalue(L, L->top, scfa_shared_next(L, hvalue(gt(L))));
+  incr_top(L);
+  lua_unlock(L);
+}
+
 /* generic for whose iterator is a table (Lua 5.0): iterate it with next */
 static void scfa_tfor_prep (lua_State *L, LClosure *cl, StkId ra) {
   if (ttistable(ra)) {
-    Closure *ncl = luaF_newCclosure(L, 0, cl->env);
-    ncl->c.f = scfa_next;
+    Closure *ncl = scfa_shared_next(L, cl->env);
     setobjs2s(L, ra+1, ra);
     setclvalue(L, ra, ncl);
   }
