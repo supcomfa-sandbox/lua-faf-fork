@@ -372,7 +372,45 @@ static int db_errorfb (lua_State *L) {
 }
 
 
+/* SCFA (GPG) additions to the debug library (exe table 0xd45720). They are diagnostics: allocatedsize is estimated through the public API (FAF's debug.lua
+** `reprsize`, repr.lua and InternalSaveGame.lua call it on every value), the rest are inert so a script that probes them keeps running. */
+static int db_allocatedsize (lua_State *L) {
+  size_t size = 0;
+  switch (lua_type(L, 1)) {
+    case LUA_TSTRING: size = lua_objlen(L, 1) + 17; break;
+    case LUA_TTABLE: {
+      size_t n = 0;
+      lua_pushnil(L);
+      while (lua_next(L, 1)) { n++; lua_pop(L, 1); }
+      size = 40 + 20 * n;
+      break;
+    }
+    case LUA_TUSERDATA: size = lua_objlen(L, 1) + 24; break;
+    default: size = 0; break;
+  }
+  lua_pushnumber(L, (lua_Number)size);
+  return 1;
+}
+
+static int db_inert (lua_State *L) {
+  (void)L;
+  return 0;
+}
+
+static int db_allobjects (lua_State *L) {
+  lua_newtable(L);
+  return 1;
+}
+
 static const luaL_Reg dblib[] = {
+  {"allocatedsize", db_allocatedsize},
+  {"allocinfo", db_inert},
+  {"allobjects", db_allobjects},
+  {"listcode", db_inert},
+  {"listk", db_inert},
+  {"listlocals", db_inert},
+  {"profiledata", db_inert},
+  {"trackallocations", db_inert},
   {"debug", db_debug},
   {"getfenv", db_getfenv},
   {"gethook", db_gethook},
