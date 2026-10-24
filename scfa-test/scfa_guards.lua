@@ -141,11 +141,9 @@ eq("BOM before a # line", "return loadstring('\\239\\187\\191# c\\nreturn 7')()"
 eq("BOM only", "return loadstring('\\239\\187\\191') ~= nil", true)
 eq("BOM in the middle is not skipped", "return loadstring('return 1 \\239\\187\\191') == nil", true)
 eq("second BOM is not skipped", "return loadstring('\\239\\187\\191\\239\\187\\191return 1') == nil", true)
-do
-  local partial = loadstring("\239\187return 1") == nil
-  local single = loadstring("\239return 1") == nil
-  xfail("BOM: a partial prefix (EF BB / EF) is not skipped", partial and single, "loadstring silently skips EF or EF BB at the start of a chunk instead of a syntax error")
-end
+bad("BOM: a partial prefix EF BB is a syntax error, not skipped", "\239\187return 1", "byte order mark")
+bad("BOM: a lone EF is a syntax error, not skipped", "\239return 1", "byte order mark")
+bad("BOM: EF at the very end of the chunk", "\239", "byte order mark")
 eq("hash comment trailing", "local a = 1 # note\nreturn a", 1)
 eq("hash comment at eof", "return 7 # no newline", 7)
 eq("hash after an operator ends the line", "return 1 + 2 # + 3", 3)
