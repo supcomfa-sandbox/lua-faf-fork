@@ -52,6 +52,8 @@ struct scfa_persist_io {
   lua_Writer w;
   void *wud;
   ZIO z;
+  scfa_persist_readfn rf;	/* exact reader, or NULL: z */
+  void *rud;
   int reading;
 };
 
@@ -66,6 +68,10 @@ LUA_API void scfa_persist_write (scfa_persist_io *io, const void *p, size_t n) {
 
 LUA_API void scfa_persist_read (scfa_persist_io *io, void *p, size_t n) {
   if (n == 0) return;
+  if (io->rf) {
+    if (io->rf(io->L, p, n, io->rud) != 0) luaL_error(io->L, "persist: truncated or corrupt data");
+    return;
+  }
   if (luaZ_read(&io->z, p, n) != 0) luaL_error(io->L, "persist: truncated or corrupt data");
 }
 
@@ -837,15 +843,11 @@ static int do_unpersist (lua_State *L) {
   return 1;
 }
 
-LUA_API int scfa_unpersist (lua_State *L, lua_Reader reader, void *rud, const scfa_persist_opts *opts) {
-  UP up;
+static int unpersist_common (lua_State *L, UP *upp) {
+  UP up = *upp;
   int status;
   int stopped_before;
   int perms = lua_gettop(L);
-  memset(&up, 0, sizeof(up));
-  up.opts = opts;
-  up.maxdepth = (opts && opts->max_depth > 0) ? opts->max_depth : DEFAULT_DEPTH;
-  luaZ_init(L, &up.io.z, reader, rud);
   up.io.reading = 1;
   stopped_before = (G(L)->GCthreshold == MAX_LUMEM);
   lua_gc(L, LUA_GCSTOP, 0);
@@ -858,6 +860,27 @@ LUA_API int scfa_unpersist (lua_State *L, lua_Reader reader, void *rud, const sc
   free(up.closures);
   free(up.pairs);
   return status;
+}
+
+static void up_init (UP *up, const scfa_persist_opts *opts) {
+  memset(up, 0, sizeof(*up));
+  up->opts = opts;
+  up->maxdepth = (opts && opts->max_depth > 0) ? opts->max_depth : DEFAULT_DEPTH;
+}
+
+LUA_API int scfa_unpersist (lua_State *L, lua_Reader reader, void *rud, const scfa_persist_opts *opts) {
+  UP up;
+  up_init(&up, opts);
+  luaZ_init(L, &up.io.z, reader, rud);
+  return unpersist_common(L, &up);
+}
+
+LUA_API int scfa_unpersist_exact (lua_State *L, scfa_persist_readfn read, void *rud, const scfa_persist_opts *opts) {
+  UP up;
+  up_init(&up, opts);
+  up.io.rf = read;
+  up.io.rud = rud;
+  return unpersist_common(L, &up);
 }
 
 LUA_API void scfa_persist_reverse_perms (lua_State *L, int permsidx) {

@@ -712,6 +712,42 @@ static void test_untyped_userdata_and_lightud (void) {
   lua_close(L2); lua_close(L); free(b.p);
 }
 
+/* an exact reader: the stream is shared with other readers, so the library must never read ahead */
+typedef struct ExactRd { const char *p; size_t n; size_t asked; } ExactRd;
+static int exact_read (lua_State *L, void *dst, size_t n, void *ud) {
+  ExactRd *r = (ExactRd *)ud;
+  (void)L;
+  if (n > r->n) return 1;
+  memcpy(dst, r->p, n);
+  r->p += n; r->n -= n; r->asked += n;
+  return 0;
+}
+static void test_exact_reader (void) {
+  lua_State *L = newL(), *L2;
+  Buf b = {0, 0, 0};
+  ExactRd r;
+  char *padded;
+  CHECK(luaL_dostring(L, scenario) == 0);
+  CHECK(luaL_dostring(L, "S = mk(); step(S); step(S); step(S)") == 0);
+  lua_getglobal(L, "S");
+  CHECK(save(L, &b, NULL) == 0);
+  padded = (char *)malloc(b.n + 5);
+  memcpy(padded, b.p, b.n);
+  memcpy(padded + b.n, "TRAIL", 5);	/* someone else's data right behind the universe */
+  r.p = padded; r.n = b.n + 5; r.asked = 0;
+  L2 = newL();
+  CHECK(luaL_dostring(L2, scenario) == 0);
+  build_perms(L2, 1);
+  CHECK(scfa_unpersist_exact(L2, exact_read, &r, NULL) == 0);
+  CHECK(r.asked == b.n);		/* consumed exactly the stream */
+  CHECK(r.n == 5 && memcmp(r.p, "TRAIL", 5) == 0);
+  lua_remove(L2, 1);
+  lua_setglobal(L2, "S");
+  CHECK(luaL_dostring(L2, "step(S); step(S); step(S); step(S); step(S); step(S)") == 0);
+  CHECKS(runs(L2, "return (string.find(report(S), 'done', 1, true)) and 'ok' or 'bad'"), "ok");
+  lua_close(L2); lua_close(L); free(b.p); free(padded);
+}
+
 static void test_gc_after_load (void) {		/* dropping a loaded universe and collecting must not corrupt the state */
   lua_State *L = newL(), *L2;
   Buf b = {0, 0, 0};
@@ -958,6 +994,7 @@ int main (void) {
   RUN(test_permanent_table_content);
   RUN(test_typed_userdata);
   RUN(test_untyped_userdata_and_lightud);
+  RUN(test_exact_reader);
   RUN(test_gc_after_load);
   RUN(test_gc_after_failed_load);
   RUN(test_errors_and_corruption);

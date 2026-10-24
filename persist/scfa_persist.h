@@ -50,6 +50,12 @@ LUA_API void scfa_persist (lua_State *L, lua_Writer writer, void *wud, const scf
 ** state is restored either way. The stream must have come from the same build (header check). */
 LUA_API int scfa_unpersist (lua_State *L, lua_Reader reader, void *rud, const scfa_persist_opts *opts);
 
+/* Same, with an EXACT reader: read(L, dst, n, ud) must deliver exactly n bytes (0 = ok, else an error).
+** Use it when the stream is shared with other readers (the engine archive): the library never reads
+** ahead of what it needs, unlike a lua_Reader which hands out whole chunks. */
+typedef int (*scfa_persist_readfn) (lua_State *L, void *dst, size_t n, void *ud);
+LUA_API int scfa_unpersist_exact (lua_State *L, scfa_persist_readfn read, void *rud, const scfa_persist_opts *opts);
+
 /* stack [perms] -> [perms, reversed]: reversed[perms[k]] = k  for every pair */
 LUA_API void scfa_persist_reverse_perms (lua_State *L, int permsidx);
 
