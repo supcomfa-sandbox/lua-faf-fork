@@ -220,6 +220,41 @@ static void test_gpgtype (void) {
   lua_close(L);
 }
 
+/* `for k,v in table do' (Lua 5.0) iterates with ONE scfa_next closure per state (scfa_pushnext): a coroutine suspended in such a loop holds
+   that very function, so a persistence walk can name it as a permanent (a fresh closure per loop could not be named, #213). */
+static void test_shared_next (void) {
+  lua_State *L = luaL_newstate();
+  lua_State *co;
+  lua_Debug ar;
+  int i;
+  luaL_openlibs(L);
+  scfa_pushnext(L);
+  scfa_pushnext(L);
+  CHECK(lua_iscfunction(L, -1) && lua_rawequal(L, -1, -2));
+  lua_pop(L, 2);
+  CHECK(luaL_dostring(L, "local n = 0 for k, v in {a = 1, b = 2, c = 3} do n = n + v end Sum = n") == 0);
+  lua_getglobal(L, "Sum");
+  CHECK(lua_tonumber(L, -1) == 6);
+  lua_pop(L, 1);
+  for (i = 0; i < 2; i++) {   /* two coroutines, two loops: the same generator */
+    co = lua_newthread(L);
+    CHECK(luaL_loadstring(co, "for k, v in {x = 1} do coroutine.yield(k) end") == 0);
+    CHECK(lua_resume(co, 0) == LUA_YIELD);
+    lua_settop(co, 0);
+    {   /* the Lua frame of the loop (level 0 may still be the yield) */
+      int level = 0;
+      const char *name = NULL;
+      while (lua_getstack(co, level, &ar) && !(name = lua_getlocal(co, &ar, 1))) level++;
+      CHECK(name != NULL && strcmp(name, "(for generator)") == 0);
+    }
+    scfa_pushnext(co);
+    CHECK(lua_rawequal(co, -1, -2));
+    lua_settop(co, 0);
+    lua_pop(L, 1);
+  }
+  lua_close(L);
+}
+
 int main (void) {
   test_userdata_slots();
   test_gc_hook();
@@ -227,6 +262,7 @@ int main (void) {
   test_defaultmetatable();
   test_userdata_type();
   test_gpgtype();
+  test_shared_next();
   printf("%s: %d checks, %d failures\n", failures ? "FAIL" : "PASS", checks, failures);
   return failures != 0;
 }

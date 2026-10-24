@@ -70,6 +70,9 @@ LUA_API void  (lua_touserdata_rref) (scfa_RRef *ret, lua_State *L, int idx);
 /* engine type number of the value at idx (6 = C function, 7 = Lua function, 8 = userdata, 9 = thread; -1 none) */
 LUA_API int   (lua_gpgtype) (lua_State *L, int idx);
 
+/* push the state's one iterator closure of `for k,v in table do' (Lua 5.0 style; shared by every such loop, so it can be a permanent of a persistence walk) */
+LUA_API void  (scfa_pushnext) (lua_State *L);
+
 #if defined(__cplusplus)
 /* C++ build of the core (-DSCFA_CPP_ERRORS): an error with no protected call active is thrown as this
 ** exception (the exe throws C++ exceptions from luaD_throw); the stack is reset and the error object
