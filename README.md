@@ -100,3 +100,9 @@ behaviour that is kept. The tests were written before the implementation (they f
 
 `src/llex.[ch]`, `lparser.[ch]`, `lcode.[ch]`, `lopcodes.[ch]`, `lvm.c`, `ltm.h`, `lauxlib.c`, `lstrlib.c`,
 `ltablib.c`, `lualib.h`, `luaconf.h`, `print.c`, new `lscfa_tablefuncs.c`. `git diff d3e144e` shows all of it.
+
+## Adapter moved
+
+The adapter (seams, tests, hook glue) no longer lives in this repo. It is in the base repo at `lua-upgrade/adapter`
+(https://github.com/supcomfa-sandbox/supreme-commander-forged-alliance). This repo is the VM only; the base repo pins it as the
+submodule `lua-upgrade/vm/lua-faf-fork`.
