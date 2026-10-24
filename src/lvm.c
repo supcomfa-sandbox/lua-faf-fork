@@ -108,8 +108,19 @@ static void callTM (lua_State *L, const TValue *f, const TValue *p1,
 }
 
 
+/* SCFA/LuaPlus: a value of a basic type (nil, boolean, number, ...) with a default metatable but no __index is indexed THROUGH that metatable itself
+** (exe luaT_gettmbyobj 0x928450 returns the per-type slot; luaV_gettable then continues with the metatable as the indexed table), so `nil.x` is nil, not an
+** error (FAF's uiutil.lua UIFile relies on it: skins[0].texturesPath). Sets go the same way; config.lua puts an erroring __newindex on those metatables. */
+static Table *scfa_defmt (lua_State *L, const TValue *t) {
+  int tt = ttype(t);
+  if (tt == LUA_TTABLE || tt == LUA_TUSERDATA) return NULL;
+  return G(L)->mt[tt];
+}
+
+
 void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
   int loop;
+  TValue scfa_tmp;
   for (loop = 0; loop < MAXTAGLOOP; loop++) {
     const TValue *tm;
     if (ttistable(t)) {  /* `t' is a table? */
@@ -122,8 +133,13 @@ void luaV_gettable (lua_State *L, const TValue *t, TValue *key, StkId val) {
       }
       /* else will try the tag method */
     }
-    else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_INDEX)))
-      luaG_typeerror(L, t, "index");
+    else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_INDEX))) {
+      Table *dm = scfa_defmt(L, t);
+      if (dm == NULL) luaG_typeerror(L, t, "index");
+      sethvalue(L, &scfa_tmp, dm);   /* index the default metatable itself */
+      t = &scfa_tmp;
+      continue;
+    }
     if (ttisfunction(tm)) {
       callTMres(L, val, tm, t, key);
       return;
@@ -151,8 +167,13 @@ void luaV_settable (lua_State *L, const TValue *t, TValue *key, StkId val) {
       }
       /* else will try the tag method */
     }
-    else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_NEWINDEX)))
-      luaG_typeerror(L, t, "index");
+    else if (ttisnil(tm = luaT_gettmbyobj(L, t, TM_NEWINDEX))) {
+      Table *dm = scfa_defmt(L, t);
+      if (dm == NULL) luaG_typeerror(L, t, "index");
+      sethvalue(L, &temp, dm);   /* set into the default metatable itself (its own __newindex decides) */
+      t = &temp;
+      continue;
+    }
     if (ttisfunction(tm)) {
       callTM(L, tm, t, key, val);
       return;
@@ -225,10 +246,23 @@ static int l_strcmp (const TString *ls, const TString *rs) {
 }
 
 
+/* SCFA/LuaPlus: ordering values of DIFFERENT types is not an error, it compares the engine type numbers (nil 0, boolean 1, lightuserdata 2, number 3, string 4,
+** table 5, C function 6, Lua function 7, userdata 8, thread 9): `nil > 0` is false, `1 < 'a'` is true (probed in the 5.0 exe, 2026-10-24). FAF mods rely on it
+** (idleengineers `unitcount > n` with a nil count). Same-type nil/boolean/function ordering stays an error. */
+static int scfa_typerank (const TValue *o) {
+  switch (ttype(o)) {
+    case LUA_TFUNCTION: return clvalue(o)->c.isC ? 6 : 7;
+    case LUA_TUSERDATA: return 8;
+    case LUA_TTHREAD: return 9;
+    default: return ttype(o);
+  }
+}
+
+
 int luaV_lessthan (lua_State *L, const TValue *l, const TValue *r) {
   int res;
   if (ttype(l) != ttype(r))
-    return luaG_ordererror(L, l, r);
+    return scfa_typerank(l) < scfa_typerank(r);
   else if (ttisnumber(l))
     return luai_numlt(nvalue(l), nvalue(r));
   else if (ttisstring(l))
@@ -242,7 +276,7 @@ int luaV_lessthan (lua_State *L, const TValue *l, const TValue *r) {
 static int lessequal (lua_State *L, const TValue *l, const TValue *r) {
   int res;
   if (ttype(l) != ttype(r))
-    return luaG_ordererror(L, l, r);
+    return scfa_typerank(l) <= scfa_typerank(r);
   else if (ttisnumber(l))
     return luai_numle(nvalue(l), nvalue(r));
   else if (ttisstring(l))
