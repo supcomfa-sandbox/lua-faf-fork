@@ -153,20 +153,20 @@ static void pushtstring (lua_State *L, TString *s) {
 
 /* ============================================================== persist */
 
-typedef struct PI {
+typedef struct PstInfo {
   lua_State *L;
   scfa_persist_io io;
   const scfa_persist_opts *opts;
   int flags;
   int counter;
   int depth, maxdepth;
-} PI;
+} PstInfo;
 
-static void persist (PI *pi);
+static void persist (PstInfo *pi);
 
 static TValue *topv (lua_State *L) { return L->top - 1; }
 
-static void persisttable_body (PI *pi) {
+static void persisttable_body (PstInfo *pi) {
   lua_State *L = pi->L;
   Table *h = hvalue(topv(L));
   int narr = h->sizearray, nrec = 0, i;
@@ -190,7 +190,7 @@ static void persisttable_body (PI *pi) {
   lua_pop(L, 1);
 }
 
-static void persistuserdata (PI *pi) {
+static void persistuserdata (PstInfo *pi) {
   lua_State *L = pi->L;
   const void *rtype = lua_getuserdatatype(L, -1);
   need(L, 4);
@@ -213,7 +213,7 @@ static void persistuserdata (PI *pi) {
   lua_pop(L, 1);
 }
 
-static void persistfunction (PI *pi) {
+static void persistfunction (PstInfo *pi) {
   lua_State *L = pi->L;
   Closure *cl = clvalue(topv(L));
   int i;
@@ -237,7 +237,7 @@ static void persistfunction (PI *pi) {
   lua_pop(L, 1);
 }
 
-static void persistupval (PI *pi) {
+static void persistupval (PstInfo *pi) {
   lua_State *L = pi->L;
   UpVal *uv = gco2uv(gcvalue(topv(L)));
   pusho(L, uv->v);
@@ -245,7 +245,7 @@ static void persistupval (PI *pi) {
   lua_pop(L, 1);
 }
 
-static void persistproto (PI *pi) {
+static void persistproto (PstInfo *pi) {
   lua_State *L = pi->L;
   Proto *p = gco2p(gcvalue(topv(L)));
   int i;
@@ -276,7 +276,7 @@ static void persistproto (PI *pi) {
   put8(&pi->io, p->maxstacksize);
 }
 
-static void persistthread (PI *pi) {
+static void persistthread (PstInfo *pi) {
   lua_State *L = pi->L;
   lua_State *L2 = thvalue(topv(L));
   int i, nframes;
@@ -323,7 +323,7 @@ static void persistthread (PI *pi) {
   lua_pop(L, 1);
 }
 
-static void persist (PI *pi) {
+static void persist (PstInfo *pi) {
   lua_State *L = pi->L;
   int type = lua_type(L, -1);
   int ref;
@@ -398,7 +398,7 @@ static void persist (PI *pi) {
 }
 
 LUA_API void scfa_persist (lua_State *L, lua_Writer writer, void *wud, const scfa_persist_opts *opts) {
-  PI pi;
+  PstInfo pi;
   const char *tag = scfa_persist_build_tag();
   luaL_checktype(L, 1, LUA_TTABLE);
   if (lua_gettop(L) != 2) luaL_error(L, "persist: expected [perms, root] on the stack");
@@ -418,7 +418,7 @@ LUA_API void scfa_persist (lua_State *L, lua_Writer writer, void *wud, const scf
 
 /* ============================================================ unpersist */
 
-typedef struct UP {
+typedef struct UnpInfo {
   lua_State *L;
   scfa_persist_io io;
   const scfa_persist_opts *opts;
@@ -435,9 +435,9 @@ typedef struct UP {
   UpVal **pairs;	/* (boxed, open) pairs */
   size_t npairs, cappairs;
   int ok;
-} UP;
+} UnpInfo;
 
-static void unpersist (UP *up);
+static void unpersist (UnpInfo *up);
 
 static void *grow (void *p, size_t *cap, size_t n, size_t esz) {
   if (n < *cap) return p;
@@ -446,7 +446,7 @@ static void *grow (void *p, size_t *cap, size_t n, size_t esz) {
   return p;
 }
 
-static void registerobject (UP *up, int ref) {
+static void registerobject (UnpInfo *up, int ref) {
   lua_State *L = up->L;
   need(L, 3);
   lua_pushlightuserdata(L, (void *)(intptr_t)ref);
@@ -454,11 +454,11 @@ static void registerobject (UP *up, int ref) {
   lua_rawset(L, up->reft);
 }
 
-static void checkindex (UP *up, uint32_t v, uint32_t limit, const char *what) {
+static void checkindex (UnpInfo *up, uint32_t v, uint32_t limit, const char *what) {
   if (v > limit) luaL_error(up->L, "persist: corrupt data (%s)", what);
 }
 
-static void unpersiststring (UP *up) {
+static void unpersiststring (UnpInfo *up) {
   lua_State *L = up->L;
   char small[256];
   uint32_t len = get32(&up->io);
@@ -478,7 +478,7 @@ static void unpersiststring (UP *up) {
   }
 }
 
-static void setmeta_from_top (UP *up) {	/* [obj mt|nil] -> [obj]; nil clears */
+static void setmeta_from_top (UnpInfo *up) {	/* [obj mt|nil] -> [obj]; nil clears */
   lua_State *L = up->L;
   if (!lua_istable(L, -1)) {
     if (!lua_isnil(L, -1)) luaL_error(L, "persist: corrupt data (metatable)");
@@ -488,7 +488,7 @@ static void setmeta_from_top (UP *up) {	/* [obj mt|nil] -> [obj]; nil clears */
   lua_setmetatable(L, -2);
 }
 
-static void unpersisttable_body (UP *up, int fresh, int ref) {
+static void unpersisttable_body (UnpInfo *up, int fresh, int ref) {
   lua_State *L = up->L;
   uint32_t narr = get32(&up->io), nrec = get32(&up->io);
   need(L, 6);
@@ -510,7 +510,7 @@ static void unpersisttable_body (UP *up, int fresh, int ref) {
   }
 }
 
-static LClosure *newbox (UP *up) {	/* closure with one closed upvalue holding nil: stands for an UpVal */
+static LClosure *newbox (UnpInfo *up) {	/* closure with one closed upvalue holding nil: stands for an UpVal */
   lua_State *L = up->L;
   LClosure *box = &luaF_newLclosure(L, 1, hvalue(gt(L)))->l;
   need(L, 1);
@@ -521,7 +521,7 @@ static LClosure *newbox (UP *up) {	/* closure with one closed upvalue holding ni
   return box;
 }
 
-static void unpersistfunction (UP *up, int ref) {
+static void unpersistfunction (UnpInfo *up, int ref) {
   lua_State *L = up->L;
   unsigned nups = get8(&up->io);
   unsigned i;
@@ -555,7 +555,7 @@ static void unpersistfunction (UP *up, int ref) {
   lua_pop(L, 1);
 }
 
-static void unpersistupval (UP *up, int ref) {
+static void unpersistupval (UnpInfo *up, int ref) {
   lua_State *L = up->L;
   LClosure *box = newbox(up);
   registerobject(up, ref);
@@ -564,7 +564,7 @@ static void unpersistupval (UP *up, int ref) {
   lua_pop(L, 1);
 }
 
-static void unpersistproto (UP *up) {
+static void unpersistproto (UnpInfo *up) {
   lua_State *L = up->L;
   Proto *p = luaF_newproto(L);
   uint32_t n, i;
@@ -634,7 +634,7 @@ static void unpersistproto (UP *up) {
   p->maxstacksize = (lu_byte)get8(&up->io);
 }
 
-static void unpersistthread (UP *up, int ref) {
+static void unpersistthread (UnpInfo *up, int ref) {
   lua_State *L = up->L;
   lua_State *L2 = lua_newthread(L);
   uint32_t stacksize, top, nframes, i;
@@ -707,7 +707,7 @@ static void unpersistthread (UP *up, int ref) {
   }
 }
 
-static void unpersistuserdata (UP *up, int ref) {
+static void unpersistuserdata (UnpInfo *up, int ref) {
   lua_State *L = up->L;
   unsigned typed = get8(&up->io);
   need(L, 3);
@@ -728,7 +728,7 @@ static void unpersistuserdata (UP *up, int ref) {
   setmeta_from_top(up);
 }
 
-static void unpersistperm (UP *up, int ref) {
+static void unpersistperm (UnpInfo *up, int ref) {
   lua_State *L = up->L;
   need(L, 3);
   unpersist(up);			/* key */
@@ -743,7 +743,7 @@ static void unpersistperm (UP *up, int ref) {
   if (lua_istable(L, -1) && (up->flags & SCFA_PERSIST_PERMTABLE_CONTENT)) unpersisttable_body(up, 0, ref);
 }
 
-static void unpersist (UP *up) {
+static void unpersist (UnpInfo *up) {
   lua_State *L = up->L;
   unsigned kind;
   if (++up->depth > up->maxdepth) luaL_error(L, "persist: structure nested too deeply");
@@ -796,7 +796,7 @@ static int cmp_ptr (const void *a, const void *b) {
   return x < y ? -1 : (x > y ? 1 : 0);
 }
 
-static void fixup_open_upvalues (UP *up) {
+static void fixup_open_upvalues (UnpInfo *up) {
   size_t i;
   int j;
   if (up->npairs == 0) return;
@@ -813,7 +813,7 @@ static void fixup_open_upvalues (UP *up) {
 
 static int do_unpersist (lua_State *L) {
   /* stack: [perms, up] */
-  UP *up = (UP *)lua_touserdata(L, 2);
+  UnpInfo *up = (UnpInfo *)lua_touserdata(L, 2);
   uint32_t magic, len;
   char tag[200];
   const char *mine = scfa_persist_build_tag();
@@ -843,8 +843,8 @@ static int do_unpersist (lua_State *L) {
   return 1;
 }
 
-static int unpersist_common (lua_State *L, UP *upp) {
-  UP up = *upp;
+static int unpersist_common (lua_State *L, UnpInfo *upp) {
+  UnpInfo up = *upp;
   int status;
   int stopped_before;
   int perms = lua_gettop(L);
@@ -862,21 +862,21 @@ static int unpersist_common (lua_State *L, UP *upp) {
   return status;
 }
 
-static void up_init (UP *up, const scfa_persist_opts *opts) {
+static void up_init (UnpInfo *up, const scfa_persist_opts *opts) {
   memset(up, 0, sizeof(*up));
   up->opts = opts;
   up->maxdepth = (opts && opts->max_depth > 0) ? opts->max_depth : DEFAULT_DEPTH;
 }
 
 LUA_API int scfa_unpersist (lua_State *L, lua_Reader reader, void *rud, const scfa_persist_opts *opts) {
-  UP up;
+  UnpInfo up;
   up_init(&up, opts);
   luaZ_init(L, &up.io.z, reader, rud);
   return unpersist_common(L, &up);
 }
 
 LUA_API int scfa_unpersist_exact (lua_State *L, scfa_persist_readfn read, void *rud, const scfa_persist_opts *opts) {
-  UP up;
+  UnpInfo up;
   up_init(&up, opts);
   up.io.rf = read;
   up.io.rud = rud;
