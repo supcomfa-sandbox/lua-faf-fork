@@ -615,7 +615,11 @@ static void addinfo (lua_State *L, const char *msg) {
 }
 
 
+static void (*scfa_errhook_fn)(lua_State *L) = NULL;
+LUA_API void (scfa_seterrhook) (void (*fn)(lua_State *L)) { scfa_errhook_fn = fn; }
+
 void luaG_errormsg (lua_State *L) {
+  if (scfa_errhook_fn) scfa_errhook_fn(L);
   if (L->errfunc != 0) {  /* is there an error handling function? */
     StkId errfunc = restorestack(L, L->errfunc);
     if (!ttisfunction(errfunc)) luaD_throw(L, LUA_ERRERR);

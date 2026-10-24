@@ -121,6 +121,7 @@ struct lua_State {
   lu_byte allowhook;
   int basehookcount;
   int hookcount;
+  SCFA_STATE_FIELDS  /* SCFA: per-state user pointer. MUST stay at offset 0x44: the exe reads LuaState* from [L+0x44] inline (lstate.c asserts it) */
   lua_Hook hook;
   TValue l_gt;  /* table of globals */
   TValue env;  /* temporary place for environments */
@@ -128,7 +129,6 @@ struct lua_State {
   GCObject *gclist;
   struct lua_longjmp *errorJmp;  /* current error recover point */
   ptrdiff_t errfunc;  /* current error handling function (stack index) */
-  SCFA_STATE_FIELDS  /* SCFA: per-state user pointer */
 };
 
 
