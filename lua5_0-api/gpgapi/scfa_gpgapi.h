@@ -60,6 +60,10 @@ LUA_API void  (lua_markvalue) (lua_State *L, int idx);	/* GC hook only: mark the
 ** their per-type metatable. Not a table: the value is only popped. */
 LUA_API void  (lua_setdefaultmetatable) (lua_State *L, int gpgtype);
 
+/* Diagnostics: `fn` (NULL = off) is called at the start of every Lua error raise (luaG_errormsg, so runtime errors and error()), with the error object on the stack top
+** and the erroring frames still in place. Process-wide. Used by the adapter's [lua51] log_errors. */
+LUA_API void  (scfa_seterrhook) (void (*fn)(lua_State *L));
+
 /* userdata with a C++ type slot (header word `rtype') */
 LUA_API void *(lua_newuserdatat) (lua_State *L, size_t size, const void *rtype);
 LUA_API const void *(lua_getuserdatatype) (lua_State *L, int idx);	/* NULL if not a typed userdata */

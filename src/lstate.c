@@ -81,6 +81,9 @@ static void f_luaopen (lua_State *L, void *ud) {
 }
 
 
+/* the exe reads the LuaState wrapper pointer inline from [L+0x44] (e.g. 0x4CEAF5): the SCFA state pointer must live there */
+typedef char scfa_stateud_at_0x44[(offsetof(struct lua_State, scfa_stateud) == 0x44) ? 1 : -1];
+
 static void preinit_state (lua_State *L, global_State *g) {
   G(L) = g;
   L->stack = NULL;
