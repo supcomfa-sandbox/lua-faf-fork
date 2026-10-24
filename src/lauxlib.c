@@ -278,8 +278,10 @@ LUALIB_API void luaI_openlib (lua_State *L, const char *libname,
 
 #if defined(LUA_COMPAT_GETN)
 
+/* the engine's checkint (exe 0x90e090): truncating conversion of lua_tonumber; 0 for a non-number means "absent" */
 static int checkint (lua_State *L, int topop) {
-  int n = (lua_type(L, -1) == LUA_TNUMBER) ? lua_tointeger(L, -1) : -1;
+  int n = (int)lua_tonumber(L, -1);
+  if (n == 0 && !lua_isnumber(L, -1)) n = -1;
   lua_pop(L, topop);
   return n;
 }
@@ -292,8 +294,8 @@ static void getsizes (lua_State *L) {
     lua_newtable(L);  /* create it */
     lua_pushvalue(L, -1);  /* `size' will be its own metatable */
     lua_setmetatable(L, -2);
-    lua_pushliteral(L, "kv");
-    lua_setfield(L, -2, "__mode");  /* metatable(N).__mode = "kv" */
+    lua_pushliteral(L, "k");
+    lua_setfield(L, -2, "__mode");  /* metatable(N).__mode = "k" (weak keys, as in 5.0) */
     lua_pushvalue(L, -1);
     lua_setfield(L, LUA_REGISTRYINDEX, "LUA_SIZES");  /* store in register */
   }
@@ -306,13 +308,13 @@ LUALIB_API void luaL_setn (lua_State *L, int t, int n) {
   lua_rawget(L, t);
   if (checkint(L, 1) >= 0) {  /* is there a numeric field `n'? */
     lua_pushliteral(L, "n");  /* use it */
-    lua_pushinteger(L, n);
+    lua_pushnumber(L, (lua_Number)n);
     lua_rawset(L, t);
   }
   else {  /* use `sizes' */
     getsizes(L);
     lua_pushvalue(L, t);
-    lua_pushinteger(L, n);
+    lua_pushnumber(L, (lua_Number)n);
     lua_rawset(L, -3);  /* sizes[t] = n */
     lua_pop(L, 1);  /* remove `sizes' */
   }
@@ -329,7 +331,13 @@ LUALIB_API int luaL_getn (lua_State *L, int t) {
   lua_pushvalue(L, t);
   lua_rawget(L, -2);
   if ((n = checkint(L, 2)) >= 0) return n;
-  return (int)lua_objlen(L, t);
+  for (n = 1; ; n++) {  /* else must count elements: the first nil from 1 (NOT the 5.1 border) */
+    lua_rawgeti(L, t, n);
+    if (lua_isnil(L, -1)) break;
+    lua_pop(L, 1);
+  }
+  lua_pop(L, 1);
+  return n - 1;
 }
 
 #endif

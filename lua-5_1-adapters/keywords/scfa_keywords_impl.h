@@ -48,10 +48,10 @@ static int scfa_lex_hook (LexState *ls, SemInfo *seminfo, int *tok) {
 static void scfa_lex_start (LexState *ls) {
   if (ls->current == 0xEF) {
     next(ls);
-    if (ls->current == 0xBB) {
-      next(ls);
-      if (ls->current == 0xBF) next(ls);
-    }
+    if (ls->current != 0xBB) luaX_lexerror(ls, "malformed UTF-8 byte order mark", 0);  /* a lone EF is not swallowed */
+    next(ls);
+    if (ls->current != 0xBF) luaX_lexerror(ls, "malformed UTF-8 byte order mark", 0);  /* nor is EF BB */
+    next(ls);
   }
 }
 

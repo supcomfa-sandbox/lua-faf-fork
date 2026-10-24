@@ -95,25 +95,96 @@ static int tf_clone (lua_State *L) {
 }
 
 
-/* Lua 5.0 behaviour kept on the 5.1 VM: table.setn stores the count in field `n';
-   table.getn returns it when it is a number, otherwise the 5.1 border */
+/* Lua 5.0 table functions that depend on getn/setn, ported from the 5.0 table library (identical to the engine's:
+   exe table.remove 0x927d30, concat 0x927dd0, getn 0x927c20 ...). luaL_getn/luaL_setn are the 5.0.2 ones (lauxlib.c, LUA_COMPAT_GETN):
+   field n, then the weak `sizes' table, then a linear count from 1. They replace the 5.1 versions, which use the 5.1 border. */
+#define scfa_aux_getn(L,n)	(luaL_checktype(L, n, LUA_TTABLE), luaL_getn(L, n))
+
 static int scfa_getn (lua_State *L) {
-  luaL_checktype(L, 1, LUA_TTABLE);
-  lua_pushliteral(L, "n");
-  lua_rawget(L, 1);
-  if (lua_type(L, -1) == LUA_TNUMBER) return 1;
-  lua_pop(L, 1);
-  lua_pushinteger(L, luaL_getn(L, 1));
+  lua_pushnumber(L, (lua_Number)scfa_aux_getn(L, 1));
   return 1;
 }
 
 
 static int scfa_setn (lua_State *L) {
   luaL_checktype(L, 1, LUA_TTABLE);
-  lua_pushliteral(L, "n");
-  lua_pushinteger(L, luaL_checkint(L, 2));
-  lua_rawset(L, 1);
-  lua_pushvalue(L, 1);
+  luaL_setn(L, 1, luaL_checkint(L, 2));
+  return 0;
+}
+
+
+static int scfa_foreachi (lua_State *L) {
+  int i;
+  int n = scfa_aux_getn(L, 1);
+  luaL_checktype(L, 2, LUA_TFUNCTION);
+  for (i=1; i<=n; i++) {
+    lua_pushvalue(L, 2);  /* function */
+    lua_pushnumber(L, (lua_Number)i);  /* 1st argument */
+    lua_rawgeti(L, 1, i);  /* 2nd argument */
+    lua_call(L, 2, 1);
+    if (!lua_isnil(L, -1))
+      return 1;
+    lua_pop(L, 1);  /* remove nil result */
+  }
+  return 0;
+}
+
+
+static int scfa_tinsert (lua_State *L) {
+  int v = lua_gettop(L);  /* number of arguments */
+  int n = scfa_aux_getn(L, 1) + 1;
+  int pos;  /* where to insert new element */
+  if (v == 2)  /* called with only 2 arguments */
+    pos = n;  /* insert new element at the end */
+  else {
+    pos = luaL_checkint(L, 2);  /* 2nd argument is the position */
+    if (pos > n) n = pos;  /* `grow' array if necessary */
+    v = 3;  /* function may be called with more than 3 args */
+  }
+  luaL_setn(L, 1, n);  /* new size */
+  while (--n >= pos) {  /* move up elements */
+    lua_rawgeti(L, 1, n);
+    lua_rawseti(L, 1, n+1);  /* t[n+1] = t[n] */
+  }
+  lua_pushvalue(L, v);
+  lua_rawseti(L, 1, pos);  /* t[pos] = v */
+  return 0;
+}
+
+
+static int scfa_tremove (lua_State *L) {
+  int n = scfa_aux_getn(L, 1);
+  int pos = luaL_optint(L, 2, n);
+  if (n <= 0) return 0;  /* table is `empty' */
+  luaL_setn(L, 1, n-1);  /* t.n = n-1 */
+  lua_rawgeti(L, 1, pos);  /* result = t[pos] */
+  for ( ;pos<n; pos++) {
+    lua_rawgeti(L, 1, pos+1);
+    lua_rawseti(L, 1, pos);  /* t[pos] = t[pos+1] */
+  }
+  lua_pushnil(L);
+  lua_rawseti(L, 1, n);  /* t[n] = nil */
+  return 1;
+}
+
+
+static int scfa_concat (lua_State *L) {
+  luaL_Buffer b;
+  size_t lsep;
+  const char *sep = luaL_optlstring(L, 2, "", &lsep);
+  int i = luaL_optint(L, 3, 1);
+  int n = luaL_optint(L, 4, 0);
+  luaL_checktype(L, 1, LUA_TTABLE);
+  if (n == 0) n = luaL_getn(L, 1);
+  luaL_buffinit(L, &b);
+  for (; i <= n; i++) {
+    lua_rawgeti(L, 1, i);
+    luaL_argcheck(L, lua_isstring(L, -1), 1, "table contains non-strings");
+    luaL_addvalue(&b);
+    if (i != n)
+      luaL_addlstring(&b, sep, lsep);
+  }
+  luaL_pushresult(&b);
   return 1;
 }
 
@@ -125,6 +196,10 @@ static const luaL_Reg tablefuncs[] = {
   {"clone", tf_clone},
   {"getn", scfa_getn},
   {"setn", scfa_setn},
+  {"foreachi", scfa_foreachi},
+  {"insert", scfa_tinsert},
+  {"remove", scfa_tremove},
+  {"concat", scfa_concat},
   {NULL, NULL}
 };
 
