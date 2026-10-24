@@ -80,6 +80,17 @@ error object on top) instead of calling the panic function. Link with `-static` 
 - GPG API differences: user/GC-hook pointers are not at the exe's `G+0x148/0x14c`, `L+0x44` offsets (only reachable through the accessors); the default metatables of tables/userdata start NULL (the exe creates an empty table per type at `lua_open`); the exe's default metatable for non-table types is used as the handler of every event, here it is a normal 5.1 per-type metatable; the GC hook gets the traversed `lua_State`, not the exe's `GCState`; RType finalization (`*(rtype+0x5c)` on collection) is not implemented (use `__gc`).
 - `proto`/`upval` type names exist as in stock 5.1.
 
+## Persistence (`persist/`, branch `persist-51`)
+
+`persist/scfa_persist.[ch]` (derived from Pluto 2.4, public domain; `persist/PROVENANCE.md`) writes and restores a Lua 5.1 universe:
+tables (cycles, metatables, weak modes), Lua closures with shared upvalues, coroutines suspended mid-yield inside nested calls
+(stack + CallInfo + saved pc, open upvalues re-shared), typed userdata through callbacks (the engine's per-RType serializers),
+permanents (C functions and engine tables by name). `lua_Number` is written bit exact. The stream header pins the build
+(opcode table included), so saves do not cross builds. API: `scfa_persist(L, writer, ud, opts)` with `[perms, root]` on the stack,
+`scfa_unpersist(L, reader, ud, opts)` (protected) with `[perms]`. Test: `scfa-test/persist/run.sh`.
+Limits: recursion (use a big-stack thread, `max_depth`), C closures with upvalues and light userdata must be permanents,
+table iteration order after a load can differ, a thread that resumed another thread cannot be saved.
+
 ## Build (32-bit, Windows, msys2 mingw32)
 
     ./build-win32.sh build                              # build/lua.exe, build/luac.exe (double numbers)
