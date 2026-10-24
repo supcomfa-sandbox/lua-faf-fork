@@ -318,8 +318,10 @@
 @@ LUA_COMPAT_GETN controls compatibility with old getn behavior.
 ** CHANGE it (define it) if you want exact compatibility with the
 ** behavior of setn/getn in Lua 5.0.
+** SCFA: DEFINED. The engine's luaL_getn/luaL_setn/table.* are the 5.0.2 ones (field n, weak
+** sizes table, then a linear count from 1: exe 0x90e090/0x90dfb0) and this switch selects them.
 */
-#undef LUA_COMPAT_GETN
+#define LUA_COMPAT_GETN
 
 /*
 @@ LUA_COMPAT_LOADLIB controls compatibility about global loadlib.
