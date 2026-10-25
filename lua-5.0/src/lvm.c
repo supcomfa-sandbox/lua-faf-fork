@@ -1,5 +1,7 @@
 /*
 ** $Id: lvm.c,v 1.284c 2003/04/03 13:35:34 roberto Exp $
+** lua-5.0-perf: SCFA_VM_FASTPATH (string-key lookup fast path), SCFA_VM_JUMPTABLE (computed goto);
+** both off = the stock VM
 ** Lua virtual machine
 ** See Copyright Notice in lua.h
 */
@@ -377,6 +379,52 @@ static void Arith (lua_State *L, StkId ra,
 
 
 
+#ifdef SCFA_VM_FASTPATH
+/*
+** SCFA perf (lua-5.0-perf): constant-string-key lookup fast path for OP_GETTABLE, OP_SELF and OP_GETGLOBAL.
+** scfa_getstr is luaH_getstr inlined (same chain walk, same result). On a miss, scfa_index walks a chain of
+** `__index' TABLES inline and returns the first non-nil value, or nil when a level has no `__index' (both exactly
+** what luaV_index/luaV_gettable return). It returns NULL, meaning "take the stock path from the start", when the chain
+** reaches an `__index' that is not a table or is deeper than SCFA_INDEX_DEPTH: lookups have no side effects (fasttm
+** only sets the absent-TM cache bit, which the stock path sets the same way), so redoing them is exact, and the stock
+** path keeps the function call, error texts and the `loop in gettable' limit.
+*/
+#define SCFA_INDEX_DEPTH	8
+
+static const TObject *scfa_getstr (Table *t, TString *key) {
+  Node *n = gnode(t, lmod(key->tsv.hash, sizenode(t)));
+  do {
+    if (ttisstring(gkey(n)) && tsvalue(gkey(n)) == key)
+      return gval(n);
+    n = n->next;
+  } while (n);
+  return &luaO_nilobject;
+}
+
+static const TObject *scfa_index (lua_State *L, Table *h, TString *key) {
+  int depth;
+  for (depth = 0; depth < SCFA_INDEX_DEPTH; depth++) {
+    const TObject *tm = fasttm(L, h->metatable, TM_INDEX);
+    const TObject *v;
+    if (tm == NULL) return &luaO_nilobject;  /* no TM: nil, as luaV_index */
+    if (!ttistable(tm)) return NULL;  /* function (or bad) TM: stock path */
+    h = hvalue(tm);
+    v = scfa_getstr(h, key);
+    if (!ttisnil(v)) return v;
+  }
+  return NULL;
+}
+
+/* R(A) := t[k] for a table t and a string k; falls back to the stock luaV_index */
+#define scfa_gettable_str(L,t,k,i) { \
+  Table *h_ = hvalue(t); \
+  const TObject *v_ = scfa_getstr(h_, tsvalue(k)); \
+  if (ttisnil(v_)) v_ = scfa_index(L, h_, tsvalue(k)); \
+  if (v_ != NULL) { setobj2s(ra, v_); } \
+  else setobj2s(XRA(i), luaV_index(L, t, k, 0)); }
+#endif
+
+
 /*
 ** some macros for common tasks in `luaV_execute'
 */
@@ -396,10 +444,61 @@ static void Arith (lua_State *L, StkId ra,
 #define dojump(pc, i)	((pc) += (i))
 
 
+/* fetch the next instruction: hooks, then base and ra (the stock loop head) */
+#define vmfetch() { \
+    i = *pc++; \
+    if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) && \
+        (--L->hookcount == 0 || L->hookmask & LUA_MASKLINE)) { \
+      traceexec(L); \
+      if (L->ci->state & CI_YIELD) {  /* did hook yield? */ \
+        L->ci->u.l.savedpc = pc - 1; \
+        L->ci->state = CI_YIELD | CI_SAVEDPC; \
+        return NULL; \
+      } \
+    } \
+    /* warning!! several calls may realloc the stack and invalidate `ra' */ \
+    base = L->base; \
+    ra = RA(i); }
+
+#ifdef SCFA_VM_JUMPTABLE
+/* SCFA perf (lua-5.0-perf): computed goto (gcc labels as values); every handler fetches and dispatches itself */
+#define vmdispatch(o)	goto *disptab[o];
+#define vmcase(l)	L_##l:
+#define vmbreak		{ vmfetch(); goto *disptab[GET_OPCODE(i)]; }
+#define SCFA_X_VMCASE(n, l, r)	vmcase(OP_##n)
+#define vmcase_bits	SCFA_BIT_OPS(SCFA_X_VMCASE)
+#define SCFA_X_VMLABEL(n, l, r)	[OP_##n] = &&L_OP_##n,
+#else
+#define vmdispatch(o)	switch (o)
+#define vmcase(l)	case l:
+#define vmbreak		break
+#define vmcase_bits	SCFA_OPCASES_BITS
+#endif
+
+
 StkId luaV_execute (lua_State *L) {
   LClosure *cl;
   TObject *k;
   const Instruction *pc;
+  Instruction i;
+  StkId base, ra;
+#ifdef SCFA_VM_JUMPTABLE
+  static const void *const disptab[64] = {
+    [0 ... 63] = &&L_OP_INVALID,
+    [OP_MOVE] = &&L_OP_MOVE, [OP_LOADK] = &&L_OP_LOADK, [OP_LOADBOOL] = &&L_OP_LOADBOOL,
+    [OP_LOADNIL] = &&L_OP_LOADNIL, [OP_GETUPVAL] = &&L_OP_GETUPVAL, [OP_GETGLOBAL] = &&L_OP_GETGLOBAL,
+    [OP_GETTABLE] = &&L_OP_GETTABLE, [OP_SETGLOBAL] = &&L_OP_SETGLOBAL, [OP_SETUPVAL] = &&L_OP_SETUPVAL,
+    [OP_SETTABLE] = &&L_OP_SETTABLE, [OP_NEWTABLE] = &&L_OP_NEWTABLE, [OP_SELF] = &&L_OP_SELF,
+    [OP_ADD] = &&L_OP_ADD, [OP_SUB] = &&L_OP_SUB, [OP_MUL] = &&L_OP_MUL, [OP_DIV] = &&L_OP_DIV,
+    SCFA_BIT_OPS(SCFA_X_VMLABEL)
+    [OP_XOR] = &&L_OP_XOR, [OP_UNM] = &&L_OP_UNM, [OP_NOT] = &&L_OP_NOT, [OP_CONCAT] = &&L_OP_CONCAT,
+    [OP_JMP] = &&L_OP_JMP, [OP_EQ] = &&L_OP_EQ, [OP_LT] = &&L_OP_LT, [OP_LE] = &&L_OP_LE, [OP_TEST] = &&L_OP_TEST,
+    [OP_CALL] = &&L_OP_CALL, [OP_TAILCALL] = &&L_OP_TAILCALL, [OP_RETURN] = &&L_OP_RETURN,
+    [OP_FORLOOP] = &&L_OP_FORLOOP, [OP_TFORLOOP] = &&L_OP_TFORLOOP, [OP_TFORPREP] = &&L_OP_TFORPREP,
+    [OP_SETLIST] = &&L_OP_SETLIST, [OP_SETLISTO] = &&L_OP_SETLISTO, [OP_CLOSE] = &&L_OP_CLOSE,
+    [OP_CLOSURE] = &&L_OP_CLOSURE
+  };
+#endif
  callentry:  /* entry point when calling new functions */
   if (L->hookmask & LUA_MASKCALL) {
     L->ci->u.l.pc = &pc;
@@ -415,65 +514,62 @@ StkId luaV_execute (lua_State *L) {
   k = cl->p->k;
   /* main loop of interpreter */
   for (;;) {
-    const Instruction i = *pc++;
-    StkId base, ra;
-    if ((L->hookmask & (LUA_MASKLINE | LUA_MASKCOUNT)) &&
-        (--L->hookcount == 0 || L->hookmask & LUA_MASKLINE)) {
-      traceexec(L);
-      if (L->ci->state & CI_YIELD) {  /* did hook yield? */
-        L->ci->u.l.savedpc = pc - 1;
-        L->ci->state = CI_YIELD | CI_SAVEDPC;
-        return NULL;
-      }
-    }
-    /* warning!! several calls may realloc the stack and invalidate `ra' */
-    base = L->base;
-    ra = RA(i);
+    vmfetch();
     lua_assert(L->ci->state & CI_HASFRAME);
     lua_assert(base == L->ci->base);
     lua_assert(L->top <= L->stack + L->stacksize && L->top >= base);
     lua_assert(L->top == L->ci->top ||
          GET_OPCODE(i) == OP_CALL ||   GET_OPCODE(i) == OP_TAILCALL ||
          GET_OPCODE(i) == OP_RETURN || GET_OPCODE(i) == OP_SETLISTO);
-    switch (GET_OPCODE(i)) {
-      case OP_MOVE: {
+    vmdispatch (GET_OPCODE(i)) {
+      vmcase(OP_MOVE) {
         setobjs2s(ra, RB(i));
-        break;
+        vmbreak;
       }
-      case OP_LOADK: {
+      vmcase(OP_LOADK) {
         setobj2s(ra, KBx(i));
-        break;
+        vmbreak;
       }
-      case OP_LOADBOOL: {
+      vmcase(OP_LOADBOOL) {
         setbvalue(ra, GETARG_B(i));
         if (GETARG_C(i)) pc++;  /* skip next instruction (if C) */
-        break;
+        vmbreak;
       }
-      case OP_LOADNIL: {
+      vmcase(OP_LOADNIL) {
         TObject *rb = RB(i);
         do {
           setnilvalue(rb--);
         } while (rb >= ra);
-        break;
+        vmbreak;
       }
-      case OP_GETUPVAL: {
+      vmcase(OP_GETUPVAL) {
         int b = GETARG_B(i);
         setobj2s(ra, cl->upvals[b]->v);
-        break;
+        vmbreak;
       }
-      case OP_GETGLOBAL: {
+      vmcase(OP_GETGLOBAL) {
         TObject *rb = KBx(i);
         const TObject *v;
         lua_assert(ttisstring(rb) && ttistable(&cl->g));
+#ifdef SCFA_VM_FASTPATH
+        (void)v;
+        scfa_gettable_str(L, &cl->g, rb, i);
+#else
         v = luaH_getstr(hvalue(&cl->g), tsvalue(rb));
         if (!ttisnil(v)) { setobj2s(ra, v); }
         else
           setobj2s(XRA(i), luaV_index(L, &cl->g, rb, 0));
-        break;
+#endif
+        vmbreak;
       }
-      case OP_GETTABLE: {
+      vmcase(OP_GETTABLE) {
         StkId rb = RB(i);
         TObject *rc = RKC(i);
+#ifdef SCFA_VM_FASTPATH
+        if (ttistable(rb) && ttisstring(rc))
+          scfa_gettable_str(L, rb, rc, i)
+        else
+#endif
         if (ttistable(rb)) {
           const TObject *v = luaH_get(hvalue(rb), rc);
           if (!ttisnil(v)) { setobj2s(ra, v); }
@@ -482,34 +578,39 @@ StkId luaV_execute (lua_State *L) {
         }
         else
           setobj2s(XRA(i), luaV_getnotable(L, rb, rc, 0));
-        break;
+        vmbreak;
       }
-      case OP_SETGLOBAL: {
+      vmcase(OP_SETGLOBAL) {
         lua_assert(ttisstring(KBx(i)) && ttistable(&cl->g));
         luaV_settable(L, &cl->g, KBx(i), ra);
-        break;
+        vmbreak;
       }
-      case OP_SETUPVAL: {
+      vmcase(OP_SETUPVAL) {
         int b = GETARG_B(i);
         setobj(cl->upvals[b]->v, ra);  /* write barrier */
-        break;
+        vmbreak;
       }
-      case OP_SETTABLE: {
+      vmcase(OP_SETTABLE) {
         luaV_settable(L, ra, RKB(i), RKC(i));
-        break;
+        vmbreak;
       }
-      case OP_NEWTABLE: {
+      vmcase(OP_NEWTABLE) {
         int b = GETARG_B(i);
         b = fb2int(b);
         sethvalue(ra, luaH_new(L, b, GETARG_C(i)));
         luaC_checkGC(L);
-        break;
+        vmbreak;
       }
-      case OP_SELF: {
+      vmcase(OP_SELF) {
         StkId rb = RB(i);
         TObject *rc = RKC(i);
         runtime_check(L, ttisstring(rc));
         setobjs2s(ra+1, rb);
+#ifdef SCFA_VM_FASTPATH
+        if (ttistable(rb))
+          scfa_gettable_str(L, rb, rc, i)
+        else
+#endif
         if (ttistable(rb)) {
           const TObject *v = luaH_getstr(hvalue(rb), tsvalue(rc));
           if (!ttisnil(v)) { setobj2s(ra, v); }
@@ -518,9 +619,9 @@ StkId luaV_execute (lua_State *L) {
         }
         else
           setobj2s(XRA(i), luaV_getnotable(L, rb, rc, 0));
-        break;
+        vmbreak;
       }
-      case OP_ADD: {
+      vmcase(OP_ADD) {
         TObject *rb = RKB(i);
         TObject *rc = RKC(i);
         if (ttisnumber(rb) && ttisnumber(rc)) {
@@ -528,9 +629,9 @@ StkId luaV_execute (lua_State *L) {
         }
         else
           Arith(L, ra, rb, rc, TM_ADD);
-        break;
+        vmbreak;
       }
-      case OP_SUB: {
+      vmcase(OP_SUB) {
         TObject *rb = RKB(i);
         TObject *rc = RKC(i);
         if (ttisnumber(rb) && ttisnumber(rc)) {
@@ -538,9 +639,9 @@ StkId luaV_execute (lua_State *L) {
         }
         else
           Arith(L, ra, rb, rc, TM_SUB);
-        break;
+        vmbreak;
       }
-      case OP_MUL: {
+      vmcase(OP_MUL) {
         TObject *rb = RKB(i);
         TObject *rc = RKC(i);
         if (ttisnumber(rb) && ttisnumber(rc)) {
@@ -548,9 +649,9 @@ StkId luaV_execute (lua_State *L) {
         }
         else
           Arith(L, ra, rb, rc, TM_MUL);
-        break;
+        vmbreak;
       }
-      case OP_DIV: {
+      vmcase(OP_DIV) {
         TObject *rb = RKB(i);
         TObject *rc = RKC(i);
         if (ttisnumber(rb) && ttisnumber(rc)) {
@@ -558,13 +659,13 @@ StkId luaV_execute (lua_State *L) {
         }
         else
           Arith(L, ra, rb, rc, TM_DIV);
-        break;
+        vmbreak;
       }
-      SCFA_OPCASES_BITS {  /* SCFA: & | << >> */
+      vmcase_bits {  /* SCFA: & | << >> */
         scfa_vm_bitop(L, GET_OPCODE(i), ra, RKB(i), RKC(i));
-        break;
+        vmbreak;
       }
-      case OP_XOR: {
+      vmcase(OP_XOR) {
         TObject *rb = RKB(i);
         TObject *rc = RKC(i);
         if (ttisnumber(rb) && ttisnumber(rc)) {
@@ -572,9 +673,9 @@ StkId luaV_execute (lua_State *L) {
         }
         else
           Arith(L, ra, RKB(i), RKC(i), TM_XOR);
-        break;
+        vmbreak;
       }
-      case OP_UNM: {
+      vmcase(OP_UNM) {
         const TObject *rb = RB(i);
         TObject temp;
         if (tonumber(rb, &temp)) {
@@ -585,52 +686,52 @@ StkId luaV_execute (lua_State *L) {
           if (!call_binTM(L, RB(i), &temp, ra, TM_UNM))
             luaG_aritherror(L, RB(i), &temp);
         }
-        break;
+        vmbreak;
       }
-      case OP_NOT: {
+      vmcase(OP_NOT) {
         int res = l_isfalse(RB(i));  /* next assignment may change this value */
         setbvalue(ra, res);
-        break;
+        vmbreak;
       }
-      case OP_CONCAT: {
+      vmcase(OP_CONCAT) {
         int b = GETARG_B(i);
         int c = GETARG_C(i);
         luaV_concat(L, c-b+1, c);  /* may change `base' (and `ra') */
         base = L->base;
         setobjs2s(RA(i), base+b);
         luaC_checkGC(L);
-        break;
+        vmbreak;
       }
-      case OP_JMP: {
+      vmcase(OP_JMP) {
         dojump(pc, GETARG_sBx(i));
-        break;
+        vmbreak;
       }
-      case OP_EQ: {
+      vmcase(OP_EQ) {
         if (equalobj(L, RKB(i), RKC(i)) != GETARG_A(i)) pc++;
         else dojump(pc, GETARG_sBx(*pc) + 1);
-        break;
+        vmbreak;
       }
-      case OP_LT: {
+      vmcase(OP_LT) {
         if (luaV_lessthan(L, RKB(i), RKC(i)) != GETARG_A(i)) pc++;
         else dojump(pc, GETARG_sBx(*pc) + 1);
-        break;
+        vmbreak;
       }
-      case OP_LE: {
+      vmcase(OP_LE) {
         if (luaV_lessequal(L, RKB(i), RKC(i)) != GETARG_A(i)) pc++;
         else dojump(pc, GETARG_sBx(*pc) + 1);
-        break;
+        vmbreak;
       }
-      case OP_TEST: {
+      vmcase(OP_TEST) {
         TObject *rb = RB(i);
         if (l_isfalse(rb) == GETARG_C(i)) pc++;
         else {
           setobjs2s(ra, rb);
           dojump(pc, GETARG_sBx(*pc) + 1);
         }
-        break;
+        vmbreak;
       }
-      case OP_CALL:
-      case OP_TAILCALL: {
+      vmcase(OP_CALL)
+      vmcase(OP_TAILCALL) {
         StkId firstResult;
         int b = GETARG_B(i);
         int nresults;
@@ -670,9 +771,9 @@ StkId luaV_execute (lua_State *L) {
           }
           goto callentry;
         }
-        break;
+        vmbreak;
       }
-      case OP_RETURN: {
+      vmcase(OP_RETURN) {
         CallInfo *ci = L->ci - 1;  /* previous function frame */
         int b = GETARG_B(i);
         if (b != 0) L->top = ra+b-1;
@@ -695,7 +796,7 @@ StkId luaV_execute (lua_State *L) {
           goto retentry;
         }
       }
-      case OP_FORLOOP: {
+      vmcase(OP_FORLOOP) {
         lua_Number step, idx, limit;
         const TObject *plimit = ra+1;
         const TObject *pstep = ra+2;
@@ -712,9 +813,9 @@ StkId luaV_execute (lua_State *L) {
           dojump(pc, GETARG_sBx(i));  /* jump back */
           chgnvalue(ra, idx);  /* update index */
         }
-        break;
+        vmbreak;
       }
-      case OP_TFORLOOP: {
+      vmcase(OP_TFORLOOP) {
         int nvar = GETARG_C(i) + 1;
         StkId cb = ra + nvar + 2;  /* call base */
         setobjs2s(cb, ra);
@@ -733,18 +834,18 @@ StkId luaV_execute (lua_State *L) {
           pc++;  /* skip jump (break loop) */
         else
           dojump(pc, GETARG_sBx(*pc) + 1);  /* jump back */
-        break;
+        vmbreak;
       }
-      case OP_TFORPREP: {  /* for compatibility only */
+      vmcase(OP_TFORPREP) {  /* for compatibility only */
         if (ttistable(ra)) {
           setobjs2s(ra+1, ra);
           setobj2s(ra, luaH_getstr(hvalue(gt(L)), luaS_new(L, "next")));
         }
         dojump(pc, GETARG_sBx(i));
-        break;
+        vmbreak;
       }
-      case OP_SETLIST:
-      case OP_SETLISTO: {
+      vmcase(OP_SETLIST)
+      vmcase(OP_SETLISTO) {
         int bc;
         int n;
         Table *h;
@@ -760,13 +861,13 @@ StkId luaV_execute (lua_State *L) {
         bc &= ~(LFIELDS_PER_FLUSH-1);  /* bc = bc - bc%FPF */
         for (; n > 0; n--)
           setobj2t(luaH_setnum(L, h, bc+n), ra+n);  /* write barrier */
-        break;
+        vmbreak;
       }
-      case OP_CLOSE: {
+      vmcase(OP_CLOSE) {
         luaF_close(L, ra);
-        break;
+        vmbreak;
       }
-      case OP_CLOSURE: {
+      vmcase(OP_CLOSURE) {
         Proto *p;
         Closure *ncl;
         int nup, j;
@@ -784,8 +885,11 @@ StkId luaV_execute (lua_State *L) {
         }
         setclvalue(ra, ncl);
         luaC_checkGC(L);
-        break;
+        vmbreak;
       }
+#ifdef SCFA_VM_JUMPTABLE
+      L_OP_INVALID: vmbreak;  /* unknown opcode: ignored, as the stock switch without a default */
+#endif
     }
   }
 }

@@ -48,6 +48,19 @@ kept on the 5.1 VM (`for k,v in table do`, `table.setn/getn`), the optional tabl
 5.0 only (as in lua-lang): `luaL_loadfile` replacement that skips BOM and `#` line, hex literals in the lexer,
 per-type metatables backported from 5.1 so strings get methods.
 
+## Lua 5.0 perf switches (branch `lua-5.0-perf`)
+
+`lua-5.0/src/lvm.c` has two compile switches for the in-place speed-up of the 5.0 VM (base repo story #284). With
+neither defined the file compiles to the same object code as before (checked with objdump, x87 and SSE flags).
+
+| switch | what |
+|---|---|
+| `SCFA_VM_FASTPATH` | `OP_GETTABLE` / `OP_SELF` / `OP_GETGLOBAL` with a string key on a table: inlined `luaH_getstr`, and a miss walks up to 8 levels of `__index` tables inline. An `__index` function, a deeper chain or a non-table operand takes the stock path from the start (lookups have no side effects, so results, errors and the `loop in gettable` limit are unchanged). |
+| `SCFA_VM_JUMPTABLE` | computed-goto dispatch (gcc labels as values); each handler fetches and dispatches the next instruction. Unknown opcodes are ignored, as by the stock switch. |
+
+The base repo builds them as harness runtimes `50faffloat-perf` (SSE float flags, the game's msvcr80 CRT math),
+`50faffloat-perf-fast` (+ fast path) and `50faffloat-perf-goto` (+ computed goto), checked against the 50faffloat goldens.
+
 ## Not ported / known gaps
 
 - `__band`, `__bor`, `__bshl`, `__bshr` metamethods (the exe names them; lua-lang does not implement them either).
